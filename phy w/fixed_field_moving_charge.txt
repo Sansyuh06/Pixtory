@@ -1,0 +1,861 @@
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/constants.hpp>
+#include <vector>
+#include <iostream>
+#include <string>
+#include <cmath>
+#include <map>
+#include <sstream>
+#include <iomanip>
+
+// Window size
+const int WIDTH = 1280;
+const int HEIGHT = 720;
+
+// Simple bitmap font data for basic characters (8x8 pixel font)
+const int FONT_WIDTH = 8;
+const int FONT_HEIGHT = 8;
+
+// Basic bitmap font data for essential characters
+std::map<char, std::vector<uint8_t>> fontData = {
+    {'E', {0x7F, 0x40, 0x40, 0x7E, 0x40, 0x40, 0x7F, 0x00}},
+    {'=', {0x00, 0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00}},
+    {'k', {0x40, 0x44, 0x48, 0x70, 0x48, 0x44, 0x42, 0x00}},
+    {'q', {0x00, 0x00, 0x1E, 0x20, 0x3E, 0x22, 0x1F, 0x00}},
+    {'r', {0x00, 0x00, 0x5C, 0x62, 0x40, 0x40, 0x40, 0x00}},
+    {'(', {0x0C, 0x10, 0x20, 0x20, 0x20, 0x10, 0x0C, 0x00}},
+    {')', {0x30, 0x08, 0x04, 0x04, 0x04, 0x08, 0x30, 0x00}},
+    {'^', {0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    {'2', {0x3C, 0x42, 0x02, 0x1C, 0x20, 0x40, 0x7E, 0x00}},
+    {'/', {0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00}},
+    {'4', {0x08, 0x18, 0x28, 0x48, 0x7E, 0x08, 0x08, 0x00}},
+    {'?', {0x00, 0x7E, 0x24, 0x24, 0x24, 0x24, 0x24, 0x00}},
+    {'?', {0x1E, 0x20, 0x18, 0x20, 0x20, 0x20, 0x1E, 0x00}},
+    {'0', {0x3C, 0x42, 0x46, 0x4A, 0x52, 0x62, 0x3C, 0x00}},
+    {'1', {0x18, 0x28, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00}},
+    {'3', {0x3C, 0x42, 0x02, 0x1C, 0x02, 0x42, 0x3C, 0x00}},
+    {'5', {0x7E, 0x40, 0x7C, 0x02, 0x02, 0x42, 0x3C, 0x00}},
+    {'6', {0x1C, 0x20, 0x40, 0x7C, 0x42, 0x42, 0x3C, 0x00}},
+    {'7', {0x7E, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00}},
+    {'8', {0x3C, 0x42, 0x42, 0x3C, 0x42, 0x42, 0x3C, 0x00}},
+    {'9', {0x3C, 0x42, 0x42, 0x3E, 0x02, 0x04, 0x38, 0x00}},
+    {'.', {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00}},
+    {'-', {0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00}},
+    {'+', {0x00, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x00, 0x00}},
+    {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    {'x', {0x00, 0x00, 0x42, 0x24, 0x18, 0x24, 0x42, 0x00}},
+    {'y', {0x00, 0x00, 0x42, 0x42, 0x26, 0x1A, 0x02, 0x3C}},
+    {'z', {0x00, 0x00, 0x7E, 0x04, 0x18, 0x20, 0x7E, 0x00}},
+    {'t', {0x10, 0x10, 0x7C, 0x10, 0x10, 0x12, 0x0C, 0x00}},
+    {'|', {0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00}},
+    {'c', {0x00, 0x00, 0x1E, 0x20, 0x20, 0x20, 0x1E, 0x00}},
+    {'[', {0x3C, 0x20, 0x20, 0x20, 0x20, 0x20, 0x3C, 0x00}},
+    {']', {0x3C, 0x04, 0x04, 0x04, 0x04, 0x04, 0x3C, 0x00}},
+    {',', {0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x10, 0x20}}
+};
+
+// Text rendering globals
+unsigned int textVAO = 0, textVBO = 0;
+unsigned int fontTexture = 0;
+
+// Charge structure
+struct Charge {
+    glm::vec3 position;
+    float magnitude;
+    glm::vec3 color;
+
+    Charge(glm::vec3 pos, float mag, glm::vec3 col) : position(pos), magnitude(mag), color(col) {}
+};
+
+std::vector<Charge> charges;
+
+// Camera setup
+glm::vec3 cameraPos = glm::vec3(0.0f, 5.0f, 8.0f);
+glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+float cameraYaw = -90.0f, cameraPitch = -30.0f;
+double cameraDistance = 8.0;
+bool mouseButtonPressed = false;
+double lastMouseX = 0.0, lastMouseY = 0.0;
+float simulationTime = 0.0f;
+bool autoRotate = true;
+bool freeCameraMode = false;
+
+glm::mat4 view = glm::mat4(1.0f);
+
+// Shader sources
+const char* vertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+uniform mat4 mvp;
+void main() {
+    gl_Position = mvp * vec4(aPos, 1.0);
+}
+)";
+
+const char* fragmentShaderSource = R"(
+#version 330 core
+out vec4 FragColor;
+uniform vec3 color;
+uniform float alpha;
+void main() {
+    FragColor = vec4(color, alpha);
+}
+)";
+
+const char* sphereVertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+uniform mat4 mvp;
+uniform mat4 model;
+out vec3 FragPos;
+out vec3 Normal;
+
+void main() {
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(model))) * aPos;
+    gl_Position = mvp * vec4(aPos, 1.0);
+}
+)";
+
+const char* sphereFragmentShaderSource = R"(
+#version 330 core
+in vec3 FragPos;
+in vec3 Normal;
+out vec4 FragColor;
+
+uniform vec3 chargeColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform float time;
+
+void main() {
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    
+    // Ambient
+    float ambient = 0.4;
+    
+    // Diffuse
+    float diff = max(dot(norm, lightDir), 0.0);
+    
+    // Specular
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
+    
+    // Pulsing effect
+    float pulse = 0.9 + 0.1 * sin(time * 3.0);
+    
+    vec3 result = (ambient + diff + spec * 0.8) * chargeColor * pulse;
+    FragColor = vec4(result, 1.0);
+}
+)";
+
+const char* textVertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec4 vertex;
+out vec2 TexCoords;
+uniform mat4 projection;
+
+void main() {
+    gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
+    TexCoords = vertex.zw;
+}
+)";
+
+const char* textFragmentShaderSource = R"(
+#version 330 core
+in vec2 TexCoords;
+out vec4 color;
+
+uniform sampler2D text;
+uniform vec3 textColor;
+
+void main() {
+    vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
+    color = vec4(textColor, 1.0) * sampled;
+}
+)";
+
+// Shader compilation
+GLuint compileShader(const char* source, GLenum type) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, NULL, infoLog);
+        std::cerr << "Shader compilation error: " << infoLog << std::endl;
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource) {
+    GLuint vertexShader = compileShader(vertexSource, GL_VERTEX_SHADER);
+    GLuint fragmentShader = compileShader(fragmentSource, GL_FRAGMENT_SHADER);
+    if (vertexShader == 0 || fragmentShader == 0) {
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        return 0;
+    }
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+    GLint success;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(program, 512, NULL, infoLog);
+        std::cerr << "Program linking error: " << infoLog << std::endl;
+        glDeleteProgram(program);
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        return 0;
+    }
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    return program;
+}
+
+// Initialize bitmap font texture
+bool initTextRendering() {
+    // Create a simple bitmap font texture
+    const int texWidth = 16 * FONT_WIDTH;  // 16 characters wide
+    const int texHeight = 8 * FONT_HEIGHT; // 8 characters tall
+    std::vector<uint8_t> textureData(texWidth * texHeight, 0);
+
+    // Fill texture with font data
+    for (const auto& pair : fontData) {
+        char c = pair.first;
+        const std::vector<uint8_t>& bitmap = pair.second;
+        int charX = (c % 16) * FONT_WIDTH;
+        int charY = (c / 16) * FONT_HEIGHT;
+
+        for (int y = 0; y < FONT_HEIGHT; ++y) {
+            uint8_t row = bitmap[y];
+            for (int x = 0; x < FONT_WIDTH; ++x) {
+                int pixelIndex = (charY + y) * texWidth + (charX + x);
+                textureData[pixelIndex] = (row & (1 << (FONT_WIDTH - 1 - x))) ? 255 : 0;
+            }
+        }
+    }
+
+    glGenTextures(1, &fontTexture);
+    glBindTexture(GL_TEXTURE_2D, fontTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texWidth, texHeight, 0, GL_RED, GL_UNSIGNED_BYTE, textureData.data());
+
+    glGenVertexArrays(1, &textVAO);
+    glGenBuffers(1, &textVBO);
+    glBindVertexArray(textVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    return true;
+}
+
+std::string formatFormula(const glm::vec3& chargePos) {
+    std::stringstream ss;
+
+    float r = glm::length(chargePos);
+
+    ss << std::fixed << std::setprecision(2);
+    ss << "E = kq/r^2 = (8.99x10^9)(-1.60x10^-19)/(" << r << ")^2";
+
+    if (r > 0.01f) {
+        float fieldMagnitude = 8.99e9 * 1.60e-19 / (r * r);
+        ss << " = " << std::scientific << std::setprecision(2) << fieldMagnitude << " N/C";
+    }
+
+    return ss.str();
+}
+
+void renderText(GLuint shader, const std::string& text, float x, float y, float scale, glm::vec3 color) {
+    glUseProgram(shader);
+    GLint textColorLoc = glGetUniformLocation(shader, "textColor");
+    if (textColorLoc != -1) {
+        glUniform3f(textColorLoc, color.x, color.y, color.z);
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(textVAO);
+
+    glm::mat4 projection = glm::ortho(0.0f, (float)WIDTH, 0.0f, (float)HEIGHT);
+    GLint projLoc = glGetUniformLocation(shader, "projection");
+    if (projLoc != -1) {
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+    }
+
+    float startX = x;
+    for (size_t i = 0; i < text.length(); ++i) {
+        char c = text[i];
+        if (c == '\n') {
+            y -= 30 * scale;
+            x = startX;
+            continue;
+        }
+
+        // Check if character exists in fontData
+        if (fontData.find(c) == fontData.end()) {
+            c = ' '; // Fallback to space if character not found
+        }
+
+        float xpos = x;
+        float ypos = y;
+        float w = 20 * scale;
+        float h = 30 * scale;
+
+        float texX = (c % 16) / 16.0f;
+        float texY = (c / 16) / 8.0f;
+        float texW = 1.0f / 16.0f;
+        float texH = 1.0f / 8.0f;
+
+        float vertices[6][4] = {
+            { xpos,     ypos + h,   texX,         texY },
+            { xpos,     ypos,       texX,         texY + texH },
+            { xpos + w, ypos,       texX + texW,  texY + texH },
+            { xpos,     ypos + h,   texX,         texY },
+            { xpos + w, ypos,       texX + texW,  texY + texH },
+            { xpos + w, ypos + h,   texX + texW,  texY }
+        };
+
+        glBindTexture(GL_TEXTURE_2D, fontTexture);
+        glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        x += w * 0.6f; // Adjust character spacing
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& indices, float radius, int slices, int stacks) {
+    vertices.clear();
+    indices.clear();
+
+    for (int i = 0; i <= stacks; ++i) {
+        float phi = glm::pi<float>() * float(i) / stacks;
+        for (int j = 0; j <= slices; ++j) {
+            float theta = 2.0f * glm::pi<float>() * float(j) / slices;
+            float x = radius * sin(phi) * cos(theta);
+            float y = radius * sin(phi) * sin(theta);
+            float z = radius * cos(phi);
+            vertices.push_back(x); vertices.push_back(y); vertices.push_back(z);
+        }
+    }
+
+    for (int i = 0; i < stacks; ++i) {
+        for (int j = 0; j < slices; ++j) {
+            int first = (i * (slices + 1)) + j;
+            int second = first + slices + 1;
+            indices.push_back(first); indices.push_back(second); indices.push_back(first + 1);
+            indices.push_back(second); indices.push_back(second + 1); indices.push_back(first + 1);
+        }
+    }
+}
+
+void generateGrid(std::vector<float>& vertices, std::vector<unsigned int>& indices, float size, float spacing) {
+    vertices.clear();
+    indices.clear();
+
+    unsigned int index = 0;
+
+    for (float z = -size; z <= size; z += spacing) {
+        vertices.insert(vertices.end(), { -size, 0.0f, z });
+        vertices.insert(vertices.end(), { size, 0.0f, z });
+        indices.insert(indices.end(), { index, index + 1 });
+        index += 2;
+    }
+
+    for (float x = -size; x <= size; x += spacing) {
+        vertices.insert(vertices.end(), { x, 0.0f, -size });
+        vertices.insert(vertices.end(), { x, 0.0f, size });
+        indices.insert(indices.end(), { index, index + 1 });
+        index += 2;
+    }
+}
+
+void generateArrow(std::vector<float>& vertices, std::vector<unsigned int>& indices) {
+    vertices.clear();
+    indices.clear();
+
+    vertices.insert(vertices.end(), { 0.0f, 0.0f, 0.0f });
+    vertices.insert(vertices.end(), { 0.0f, 0.0f, 1.0f });
+
+    float headRadius = 0.05f;
+    float headLength = 0.2f;
+    int headSegments = 6;
+
+    vertices.insert(vertices.end(), { 0.0f, 0.0f, 1.0f });
+
+    for (int i = 0; i < headSegments; ++i) {
+        float angle = 2.0f * glm::pi<float>() * i / headSegments;
+        float x = headRadius * cos(angle);
+        float y = headRadius * sin(angle);
+        float z = 1.0f - headLength;
+        vertices.insert(vertices.end(), { x, y, z });
+    }
+
+    indices.insert(indices.end(), { 0, 1 });
+
+    for (int i = 0; i < headSegments; ++i) {
+        indices.insert(indices.end(), { 2, static_cast<unsigned int>(3 + i) });
+        indices.insert(indices.end(), { static_cast<unsigned int>(3 + i),
+                                      static_cast<unsigned int>(3 + ((i + 1) % headSegments)) });
+    }
+}
+
+glm::vec3 calculateElectricField(glm::vec3 point) {
+    glm::vec3 totalField(0.0f);
+
+    for (const auto& charge : charges) {
+        glm::vec3 r = point - charge.position;
+        float distance = glm::length(r);
+
+        if (distance < 0.2f) continue;
+
+        float fieldMagnitude = charge.magnitude / (distance * distance);
+        glm::vec3 fieldDirection = glm::normalize(r);
+        totalField += fieldMagnitude * fieldDirection;
+    }
+
+    return totalField;
+}
+
+void processInput(GLFWwindow* window) {
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+
+    static bool cPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
+        if (!cPressed) {
+            freeCameraMode = !freeCameraMode;
+            autoRotate = false;
+            std::cout << "Camera mode: " << (freeCameraMode ? "FREE" : "ORBIT") << std::endl;
+            cPressed = true;
+        }
+    }
+    else {
+        cPressed = false;
+    }
+
+    static bool spacePressed = false;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        if (!spacePressed) {
+            if (!freeCameraMode) {
+                autoRotate = !autoRotate;
+            }
+            spacePressed = true;
+        }
+    }
+    else {
+        spacePressed = false;
+    }
+
+    float speed = 0.02f;
+
+    if (freeCameraMode) {
+        glm::vec3 front, right, up;
+        front.x = cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+        front.y = sin(glm::radians(cameraPitch));
+        front.z = sin(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+        front = glm::normalize(front);
+        right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
+        up = glm::normalize(glm::cross(right, front));
+
+        float cameraSpeed = 0.1f;
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            cameraPos += cameraSpeed * front;
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            cameraPos -= cameraSpeed * front;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            cameraPos -= cameraSpeed * right;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            cameraPos += cameraSpeed * right;
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+            cameraPos -= cameraSpeed * up;
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+            cameraPos += cameraSpeed * up;
+
+        if (!charges.empty()) {
+            if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+                charges[0].position.z -= speed;
+            if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+                charges[0].position.z += speed;
+            if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+                charges[0].position.x -= speed;
+            if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+                charges[0].position.x += speed;
+        }
+    }
+    else {
+        if (!charges.empty()) {
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+                charges[0].position.z -= speed;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+                charges[0].position.z += speed;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+                charges[0].position.x -= speed;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+                charges[0].position.x += speed;
+            if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+                charges[0].position.y += speed;
+            if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+                charges[0].position.y -= speed;
+        }
+
+        float cameraSpeed = 1.0f;
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraPitch += cameraSpeed;
+            if (cameraPitch > 89.0f) cameraPitch = 89.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraPitch -= cameraSpeed;
+            if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraYaw -= cameraSpeed;
+        }
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraYaw += cameraSpeed;
+        }
+    }
+}
+
+void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
+    if (mouseButtonPressed) {
+        autoRotate = false;
+        double xoffset = xpos - lastMouseX;
+        double yoffset = lastMouseY - ypos;
+        lastMouseX = xpos;
+        lastMouseY = ypos;
+        float sensitivity = 0.1f;
+        cameraYaw += static_cast<float>(xoffset * sensitivity);
+        cameraPitch += static_cast<float>(yoffset * sensitivity);
+        if (cameraPitch > 89.0f) cameraPitch = 89.0f;
+        if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+    }
+}
+
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == GLFW_PRESS) {
+            mouseButtonPressed = true;
+            glfwGetCursorPos(window, &lastMouseX, &lastMouseY);
+        }
+        else if (action == GLFW_RELEASE) {
+            mouseButtonPressed = false;
+        }
+    }
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+    if (!freeCameraMode) {
+        cameraDistance -= yoffset * 0.5;
+        if (cameraDistance < 2.0) cameraDistance = 2.0;
+        if (cameraDistance > 20.0) cameraDistance = 20.0;
+    }
+}
+
+int main() {
+    // Initialize GLFW
+    if (!glfwInit()) {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
+        return -1;
+    }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Electric Field Visualization", NULL, NULL);
+    if (window == NULL) {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
+
+    glfwMakeContextCurrent(window);
+    glfwSetCursorPosCallback(window, mouseCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetScrollCallback(window, scrollCallback);
+
+    // Initialize GLEW
+    if (glewInit() != GLEW_OK) {
+        std::cerr << "Failed to initialize GLEW" << std::endl;
+        return -1;
+    }
+
+    // Enable depth testing and blending
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Initialize text rendering
+    if (!initTextRendering()) {
+        std::cerr << "Failed to initialize text rendering" << std::endl;
+        return -1;
+    }
+
+    // Create shader programs
+    GLuint lineShader = createShaderProgram(vertexShaderSource, fragmentShaderSource);
+    GLuint sphereShader = createShaderProgram(sphereVertexShaderSource, sphereFragmentShaderSource);
+    GLuint textShader = createShaderProgram(textVertexShaderSource, textFragmentShaderSource);
+
+    if (lineShader == 0 || sphereShader == 0 || textShader == 0) {
+        std::cerr << "Failed to create shader programs" << std::endl;
+        return -1;
+    }
+
+    // Initialize charges
+    charges.push_back(Charge(glm::vec3(0.0f, 0.0f, 0.0f), -1.0f, glm::vec3(1.0f, 0.3f, 0.3f)));
+
+    // Generate sphere geometry
+    std::vector<float> sphereVertices;
+    std::vector<unsigned int> sphereIndices;
+    generateSphere(sphereVertices, sphereIndices, 0.2f, 20, 20);
+
+    // Create sphere VAO and buffers
+    unsigned int sphereVAO, sphereVBO, sphereEBO;
+    glGenVertexArrays(1, &sphereVAO);
+    glGenBuffers(1, &sphereVBO);
+    glGenBuffers(1, &sphereEBO);
+
+    glBindVertexArray(sphereVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float), sphereVertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int), sphereIndices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Generate grid geometry
+    std::vector<float> gridVertices;
+    std::vector<unsigned int> gridIndices;
+    generateGrid(gridVertices, gridIndices, 5.0f, 0.5f);
+
+    // Create grid VAO and buffers
+    unsigned int gridVAO, gridVBO, gridEBO;
+    glGenVertexArrays(1, &gridVAO);
+    glGenBuffers(1, &gridVBO);
+    glGenBuffers(1, &gridEBO);
+
+    glBindVertexArray(gridVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gridVBO);
+    glBufferData(GL_ARRAY_BUFFER, gridVertices.size() * sizeof(float), gridVertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gridEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, gridIndices.size() * sizeof(unsigned int), gridIndices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Generate arrow geometry
+    std::vector<float> arrowVertices;
+    std::vector<unsigned int> arrowIndices;
+    generateArrow(arrowVertices, arrowIndices);
+
+    // Create arrow VAO and buffers
+    unsigned int arrowVAO, arrowVBO, arrowEBO;
+    glGenVertexArrays(1, &arrowVAO);
+    glGenBuffers(1, &arrowVBO);
+    glGenBuffers(1, &arrowEBO);
+
+    glBindVertexArray(arrowVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, arrowVBO);
+    glBufferData(GL_ARRAY_BUFFER, arrowVertices.size() * sizeof(float), arrowVertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, arrowEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, arrowIndices.size() * sizeof(unsigned int), arrowIndices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Main render loop
+    while (!glfwWindowShouldClose(window)) {
+        processInput(window);
+
+        // Update simulation time
+        simulationTime += 0.016f; // Assuming 60 FPS
+
+        // Update camera
+        if (freeCameraMode) {
+            glm::vec3 front;
+            front.x = cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+            front.y = sin(glm::radians(cameraPitch));
+            front.z = sin(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+            front = glm::normalize(front);
+            view = glm::lookAt(cameraPos, cameraPos + front, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+        else {
+            if (autoRotate) {
+                cameraYaw += 0.5f;
+            }
+            cameraPos.x = static_cast<float>(cameraDistance * cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch)));
+            cameraPos.y = static_cast<float>(cameraDistance * sin(glm::radians(cameraPitch)));
+            cameraPos.z = static_cast<float>(cameraDistance * sin(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch)));
+            view = glm::lookAt(cameraPos, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 100.0f);
+
+        // Clear screen
+        glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Render grid
+        glUseProgram(lineShader);
+        glm::mat4 mvp = projection * view;
+        glUniformMatrix4fv(glGetUniformLocation(lineShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+        glUniform3f(glGetUniformLocation(lineShader, "color"), 0.3f, 0.3f, 0.3f);
+        glUniform1f(glGetUniformLocation(lineShader, "alpha"), 0.5f);
+
+        glBindVertexArray(gridVAO);
+        glDrawElements(GL_LINES, gridIndices.size(), GL_UNSIGNED_INT, 0);
+
+        // Render electric field arrows
+        const float gridSpacing = 1.0f;
+        const float gridSize = 4.0f;
+        const float maxArrowLength = 0.8f;
+
+        for (float x = -gridSize; x <= gridSize; x += gridSpacing) {
+            for (float z = -gridSize; z <= gridSize; z += gridSpacing) {
+                for (float y = 0.0f; y <= 2.0f; y += gridSpacing) {
+                    glm::vec3 fieldPoint(x, y, z);
+                    glm::vec3 field = calculateElectricField(fieldPoint);
+
+                    float fieldMagnitude = glm::length(field);
+                    if (fieldMagnitude > 0.01f) {
+                        glm::vec3 fieldDirection = glm::normalize(field);
+                        float arrowLength = glm::min(fieldMagnitude * 0.5f, maxArrowLength);
+
+                        // Create transformation matrix for arrow
+                        glm::mat4 model = glm::mat4(1.0f);
+                        model = glm::translate(model, fieldPoint);
+
+                        // Calculate rotation to align arrow with field direction
+                        glm::vec3 up = glm::vec3(0.0f, 0.0f, 1.0f);
+                        if (glm::length(glm::cross(up, fieldDirection)) > 0.001f) {
+                            glm::vec3 axis = glm::normalize(glm::cross(up, fieldDirection));
+                            float angle = acos(glm::dot(up, fieldDirection));
+                            model = glm::rotate(model, angle, axis);
+                        }
+
+                        model = glm::scale(model, glm::vec3(1.0f, 1.0f, arrowLength));
+
+                        mvp = projection * view * model;
+                        glUniformMatrix4fv(glGetUniformLocation(lineShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+
+                        // Color based on field strength
+                        float intensity = glm::min(fieldMagnitude * 2.0f, 1.0f);
+                        glUniform3f(glGetUniformLocation(lineShader, "color"),
+                            0.2f + intensity * 0.8f,
+                            0.8f - intensity * 0.5f,
+                            0.2f + intensity * 0.3f);
+                        glUniform1f(glGetUniformLocation(lineShader, "alpha"), 0.8f);
+
+                        glBindVertexArray(arrowVAO);
+                        glDrawElements(GL_LINES, arrowIndices.size(), GL_UNSIGNED_INT, 0);
+                    }
+                }
+            }
+        }
+
+        // Render charges
+        glUseProgram(sphereShader);
+        glUniform3f(glGetUniformLocation(sphereShader, "lightPos"), 5.0f, 5.0f, 5.0f);
+        glUniform3f(glGetUniformLocation(sphereShader, "viewPos"), cameraPos.x, cameraPos.y, cameraPos.z);
+        glUniform1f(glGetUniformLocation(sphereShader, "time"), simulationTime);
+
+        for (const auto& charge : charges) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, charge.position);
+
+            mvp = projection * view * model;
+            glUniformMatrix4fv(glGetUniformLocation(sphereShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+            glUniformMatrix4fv(glGetUniformLocation(sphereShader, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glUniform3f(glGetUniformLocation(sphereShader, "chargeColor"),
+                charge.color.x, charge.color.y, charge.color.z);
+
+            glBindVertexArray(sphereVAO);
+            glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
+        }
+
+        // Render UI text
+        glDisable(GL_DEPTH_TEST);
+
+        // Instructions
+        std::string instructions = "Controls:\n";
+        instructions += freeCameraMode ? "WASD/QE: Move camera\n" : "WASD/QE: Move charge\n";
+        instructions += freeCameraMode ? "Arrow keys: Move charge" : "Arrow keys: Rotate camera";
+        instructions += "\nC: Toggle camera mode\nSpace: ";
+        instructions += freeCameraMode ? "N/A" : (autoRotate ? "Stop rotation" : "Auto rotate");
+        instructions += "\nMouse: Look around\nScroll: Zoom";
+
+        renderText(textShader, instructions, 20, HEIGHT - 40, 0.6f, glm::vec3(0.8f, 0.8f, 0.8f));
+
+        // Electric field formula
+        if (!charges.empty()) {
+            std::string formula = formatFormula(charges[0].position);
+            renderText(textShader, formula, 20, 80, 0.5f, glm::vec3(0.9f, 0.9f, 0.3f));
+        }
+
+        // Status information
+        std::stringstream status;
+        status << "Mode: " << (freeCameraMode ? "FREE CAMERA" : "ORBIT");
+        if (!freeCameraMode) {
+            status << " (" << (autoRotate ? "AUTO" : "MANUAL") << ")";
+        }
+        renderText(textShader, status.str(), 20, 40, 0.6f, glm::vec3(0.3f, 0.8f, 0.3f));
+
+        glEnable(GL_DEPTH_TEST);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    // Cleanup
+    glDeleteVertexArrays(1, &sphereVAO);
+    glDeleteBuffers(1, &sphereVBO);
+    glDeleteBuffers(1, &sphereEBO);
+    glDeleteVertexArrays(1, &gridVAO);
+    glDeleteBuffers(1, &gridVBO);
+    glDeleteBuffers(1, &gridEBO);
+    glDeleteVertexArrays(1, &arrowVAO);
+    glDeleteBuffers(1, &arrowVBO);
+    glDeleteBuffers(1, &arrowEBO);
+    glDeleteVertexArrays(1, &textVAO);
+    glDeleteBuffers(1, &textVBO);
+    glDeleteTextures(1, &fontTexture);
+    glDeleteProgram(lineShader);
+    glDeleteProgram(sphereShader);
+    glDeleteProgram(textShader);
+
+    glfwTerminate();
+    return 0;
+}

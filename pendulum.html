@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Double Pendulum Fractal Explorer</title>
+    <style>
+        body { margin: 0; padding: 0; background: linear-gradient(135deg, #0f0f23, #1a1a3e); color: white; font-family: 'Courier New', monospace; overflow: hidden; height: 100vh; }
+        .main-container { display: flex; height: 100vh; }
+        .fractal-section { flex: 1; display: flex; flex-direction: column; position: relative; }
+        .fractal-controls { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding: 15px 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; z-index: 100; }
+        .fractal-viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; background: rgba(0, 0, 0, 0.3); }
+        .fractal-viewport:active { cursor: grabbing; }
+        .fractal-container { position: absolute; top: 0; left: 0; transition: transform 0.1s ease-out; }
+        #fractalCanvas { border: none; background: transparent; image-rendering: pixelated; }
+        .zoom-controls { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 5px; z-index: 200; }
+        .zoom-btn { width: 40px; height: 40px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; color: white; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+        .zoom-btn:hover { background: rgba(255, 255, 255, 0.25); transform: scale(1.1); }
+        .map-toggle { position: absolute; top: 20px; right: 80px; z-index: 200; display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.3); font-size: 12px; color: white; }
+        .toggle-switch { position: relative; width: 44px; height: 24px; background: rgba(255, 255, 255, 0.2); border-radius: 12px; cursor: pointer; transition: all 0.3s ease; border: 1px solid rgba(255, 255, 255, 0.3); }
+        .toggle-switch.active { background: linear-gradient(45deg, #ff6b6b, #4ecdc4); }
+        .toggle-slider { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: white; border-radius: 50%; transition: transform 0.3s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
+        .toggle-switch.active .toggle-slider { transform: translateX(20px); }
+        .overlay { position: absolute; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px); padding: 10px 15px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .info-overlay { bottom: 20px; left: 20px; padding: 15px; font-size: 12px; max-width: 300px; border-radius: 10px; }
+        .coordinates { top: 20px; left: 20px; }
+        .side-panel { width: 350px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-left: 1px solid rgba(255, 255, 255, 0.2); display: flex; flex-direction: column; overflow-y: auto; }
+        .panel-section { background: rgba(255, 255, 255, 0.1); margin: 10px; border-radius: 10px; padding: 15px; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .panel-section h3 { margin: 0 0 10px 0; color: #4ecdc4; font-size: 14px; text-shadow: 0 0 10px rgba(78, 205, 196, 0.3); }
+        canvas { border-radius: 8px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); }
+        button { background: linear-gradient(45deg, #ff6b6b, #4ecdc4); border: none; color: white; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 12px; transition: all 0.3s ease; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .progress { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin: 0 10px; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #ff6b6b, #4ecdc4); border-radius: 2px; width: 0%; transition: width 0.3s; }
+        .info-text { font-size: 11px; color: #aaa; margin-top: 8px; }
+        .value { color: #ff6b6b; font-weight: bold; }
+        .status { color: #4ecdc4; font-weight: bold; }
+        .minimap { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; overflow: hidden; }
+        .minimap canvas { width: 100%; height: 100%; border: none; background: transparent; }
+        .viewport-indicator { position: absolute; border: 2px solid #4ecdc4; background: rgba(78, 205, 196, 0.1); pointer-events: none; }
+        .loading { color: #4ecdc4; animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="fractal-section">
+            <div class="fractal-controls">
+                <button id="regenerateBtn" onclick="generateInfiniteMap()">Regenerate Map</button>
+                <button onclick="resetView()">Reset View</button>
+                <div class="progress"><div class="progress-bar" id="progress"></div></div>
+                <div style="font-size: 11px; color: #aaa;">
+                    <span id="statusText">Ready</span> | 
+                    Zoom: <span id="zoomLevel">100%</span> | 
+                    <span id="resolution">512x512</span>
+                </div>
+            </div>
+            <div class="fractal-viewport" id="viewport">
+                <div class="fractal-container" id="fractalContainer">
+                    <canvas id="fractalCanvas" width="512" height="512"></canvas>
+                </div>
+                <div class="map-toggle">
+                    <span style="font-size: 11px; color: #aaa;">Flow</span>
+                    <div class="toggle-switch active" id="mapToggle" onclick="toggleMapMode()">
+                        <div class="toggle-slider"></div>
+                    </div>
+                    <span style="font-size: 11px; color: #aaa;">Chaos</span>
+                </div>
+                <div class="zoom-controls">
+                    <div class="zoom-btn" onclick="zoomIn()">+</div>
+                    <div class="zoom-btn" onclick="zoomOut()">−</div>
+                </div>
+                <div class="overlay coordinates" id="coordinates">θ₁: 0.000, θ₂: 0.000<br>Hover to see coordinates</div>
+                <div class="overlay info-overlay">
+                    <strong>Infinite Fractal Explorer:</strong><br>
+                    • <span id="modeInfo">Chaos mode: Click to simulate</span><br>
+                    • Drag to pan around<br>
+                    • Mouse wheel to zoom infinitely<br>
+                    • Toggle: Flow/Chaos visualization<br>
+                    • Map auto-regenerates for detail
+                </div>
+                <div class="minimap">
+                    <canvas id="minimapCanvas" width="120" height="120"></canvas>
+                    <div class="viewport-indicator" id="viewportIndicator"></div>
+                </div>
+            </div>
+        </div>
+        <div class="side-panel">
+            <div class="panel-section">
+                <h3>Double Pendulum</h3>
+                <canvas id="pendulumCanvas" width="280" height="200"></canvas>
+                <div class="info-text">
+                    <div>θ₁: <span id="theta1" class="value">0.0</span>°</div>
+                    <div>θ₂: <span id="theta2" class="value">0.0</span>°</div>
+                    <div>ω₁: <span id="omega1" class="value">0.0</span></div>
+                    <div>ω₂: <span id="omega2" class="value">0.0</span></div>
+                    <div>Energy: <span id="energy" class="value">0.0</span></div>
+                    <div class="status" id="status">Click map to start</div>
+                </div>
+            </div>
+            <div class="panel-section">
+                <h3>Frequency Analysis</h3>
+                <canvas id="waveCanvas" width="280" height="150"></canvas>
+                <div class="info-text">
+                    <div>Freq 1: <span id="freq1" class="value">0</span> Hz</div>
+                    <div>Freq 2: <span id="freq2" class="value">0</span> Hz</div>
+                    <div>Beat: <span id="beatFreq" class="value">0</span> Hz</div>
+                </div>
+            </div>
+            <div class="panel-section">
+                <h3>Motion Pattern</h3>
+                <div style="margin-bottom: 10px;">
+                    <button onclick="clearPattern()">Clear</button>
+                    <button onclick="togglePatternMode()">Mode: <span id="patternMode">Trail</span></button>
+                </div>
+                <canvas id="patternCanvas" width="280" height="150"></canvas>
+                <div class="info-text">Points: <span id="pointCount" class="value">0</span></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Get canvas elements and contexts
+        const fractalCanvas = document.getElementById('fractalCanvas');
+        const pendulumCanvas = document.getElementById('pendulumCanvas');
+        const waveCanvas = document.getElementById('waveCanvas');
+        const patternCanvas = document.getElementById('patternCanvas');
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        
+        const fractalCtx = fractalCanvas.getContext('2d');
+        const pendulumCtx = pendulumCanvas.getContext('2d');
+        const waveCtx = waveCanvas.getContext('2d');
+        const patternCtx = patternCanvas.getContext('2d');
+        const minimapCtx = minimapCanvas.getContext('2d');
+        
+        // Physical constants
+        const L1 = 80, L2 = 80, M1 = 10, M2 = 10, G = 9.81;
+        
+        // Application state
+        let state = {
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            isDragging: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            fractalImageData: null,
+            fractalBounds: { 
+                minTheta1: -Math.PI, 
+                maxTheta1: Math.PI, 
+                minTheta2: -Math.PI, 
+                maxTheta2: Math.PI 
+            },
+            currentViewBounds: null,
+            isGenerating: false,
+            generationCancelled: false,
+            mapMode: 'chaos',
+            // Audio
+            audioContext: null,
+            oscillator1: null,
+            oscillator2: null,
+            gainNode1: null,
+            gainNode2: null,
+            masterGain: null,
+            isPlaying: false,
+            // Pendulum state
+            theta1: 0,
+            theta2: 0,
+            omega1: 0,
+            omega2: 0,
+            x1: 0,
+            y1: 0,
+            x2: 0,
+            y2: 0,
+            trail: [],
+            patternPoints: [],
+            animationId: null,
+            time: 0,
+            waveData1: [],
+            waveData2: [],
+            patternMode: 'trail',
+            poincareCounter: 0
+        };
+        
+        // Initialize current view bounds
+        state.currentViewBounds = { ...state.fractalBounds };
+        
+        // Double pendulum physics
+        function doublePendulumStep(theta1, theta2, omega1, omega2, dt) {
+            const cos12 = Math.cos(theta1 - theta2);
+            const sin12 = Math.sin(theta1 - theta2);
+            const denom = 2 * M1 + M2 - M2 * Math.cos(2 * theta1 - 2 * theta2);
+            
+            // Avoid division by zero
+            if (Math.abs(denom) < 1e-10) {
+                return { theta1, theta2, omega1, omega2 };
+            }
+            
+            const num1 = -M2 * G * Math.sin(theta1 - 2 * theta2) - 
+                        2 * sin12 * M2 * (omega2 * omega2 * L2 + omega1 * omega1 * L1 * cos12);
+            const num2 = -2 * Math.sin(theta1 - theta2) * 
+                        (omega1 * omega1 * L1 * (M1 + M2) + G * (M1 + M2) * Math.cos(theta1) + 
+                         omega2 * omega2 * L2 * M2 * cos12);
+            
+            const a1 = (num1 - num2 * cos12) / (L1 * denom);
+            const a2 = num2 / (L2 * denom);
+            
+            return {
+                theta1: theta1 + omega1 * dt,
+                theta2: theta2 + omega2 * dt,
+                omega1: omega1 + a1 * dt,
+                omega2: omega2 + a2 * dt
+            };
+        }
+        
+        function calculateEnergy(theta1, theta2, omega1, omega2) {
+            const kinetic1 = 0.5 * M1 * L1 * L1 * omega1 * omega1;
+            const kinetic2 = 0.5 * M2 * (L1 * L1 * omega1 * omega1 + L2 * L2 * omega2 * omega2 + 
+                            2 * L1 * L2 * omega1 * omega2 * Math.cos(theta1 - theta2));
+            const potential = -G * (M1 * L1 * Math.cos(theta1) + M2 * (L1 * Math.cos(theta1) + L2 * Math.cos(theta2)));
+            return kinetic1 + kinetic2 + potential;
+        }
+        
+        // Coordinate transformations
+        function canvasToMathCoords(canvasX, canvasY) {
+            const bounds = state.currentViewBounds;
+            const theta1 = bounds.minTheta1 + 
+                          (canvasX / fractalCanvas.width) * 
+                          (bounds.maxTheta1 - bounds.minTheta1);
+            const theta2 = bounds.maxTheta2 - 
+                          (canvasY / fractalCanvas.height) * 
+                          (bounds.maxTheta2 - bounds.minTheta2);
+            return { theta1, theta2 };
+        }
+        
+        function mathCoordsToCanvas(theta1, theta2) {
+            const bounds = state.currentViewBounds;
+            const x = ((theta1 - bounds.minTheta1) / (bounds.maxTheta1 - bounds.minTheta1)) * fractalCanvas.width;
+            const y = ((bounds.maxTheta2 - theta2) / (bounds.maxTheta2 - bounds.minTheta2)) * fractalCanvas.height;
+            return { x, y };
+        }
+        
+        function updateTransform() {
+            const fractalContainer = document.getElementById('fractalContainer');
+            fractalContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+            
+            // Check if regeneration is needed
+            if (!state.isGenerating && checkRegenerationNeeded()) {
+                setTimeout(() => {
+                    if (!state.isGenerating) {
+                        generateInfiniteMap();
+                    }
+                }, 100);
+            }
+        }
+        
+        function calculateViewBounds() {
+            const viewport = document.getElementById('viewport');
+            const rect = viewport.getBoundingClientRect();
+            
+            // Get visible area in canvas coordinates
+            const visibleLeft = Math.max(0, -state.panX / state.zoom);
+            const visibleTop = Math.max(0, -state.panY / state.zoom);
+            const visibleRight = Math.min(fractalCanvas.width, (-state.panX + rect.width) / state.zoom);
+            const visibleBottom = Math.min(fractalCanvas.height, (-state.panY + rect.height) / state.zoom);
+            
+            // Convert to mathematical coordinates
+            const bounds = state.currentViewBounds;
+            return {
+                minTheta1: bounds.minTheta1 + (visibleLeft / fractalCanvas.width) * (bounds.maxTheta1 - bounds.minTheta1),
+                maxTheta1: bounds.minTheta1 + (visibleRight / fractalCanvas.width) * (bounds.maxTheta1 - bounds.minTheta1),
+                minTheta2: bounds.maxTheta2 - (visibleBottom / fractalCanvas.height) * (bounds.maxTheta2 - bounds.minTheta2),
+                maxTheta2: bounds.maxTheta2 - (visibleTop / fractalCanvas.height) * (bounds.maxTheta2 - bounds.minTheta2)
+            };
+        }
+        
+        function checkRegenerationNeeded() {
+            const viewBounds = calculateViewBounds();
+            const currentSpan = Math.max(
+                state.currentViewBounds.maxTheta1 - state.currentViewBounds.minTheta1,
+                state.currentViewBounds.maxTheta2 - state.currentViewBounds.minTheta2
+            );
+            const viewSpan = Math.max(
+                viewBounds.maxTheta1 - viewBounds.minTheta1,
+                viewBounds.maxTheta2 - viewBounds.minTheta2
+            );
+            
+            const zoomRatio = viewSpan / currentSpan;
+            
+            // Check if view is outside current bounds or zoom level changed significantly
+            const outsideBounds = 
+                viewBounds.minTheta1 < state.currentViewBounds.minTheta1 ||
+                viewBounds.maxTheta1 > state.currentViewBounds.maxTheta1 ||
+                viewBounds.minTheta2 < state.currentViewBounds.minTheta2 ||
+                viewBounds.maxTheta2 > state.currentViewBounds.maxTheta2;
+            
+            return zoomRatio < 0.3 || zoomRatio > 1.5 || outsideBounds;
+        }
+        
+        function generateInfiniteMap() {
+            if (state.isGenerating) {
+                state.generationCancelled = true;
+                return;
+            }
+            
+            const viewBounds = calculateViewBounds();
+            const theta1Range = viewBounds.maxTheta1 - viewBounds.minTheta1;
+            const theta2Range = viewBounds.maxTheta2 - viewBounds.minTheta2;
+            
+            // Expand the generation area with safety margins
+            const expandFactor = 0.5;
+            state.currentViewBounds = {
+                minTheta1: Math.max(-4*Math.PI, viewBounds.minTheta1 - theta1Range * expandFactor),
+                maxTheta1: Math.min(4*Math.PI, viewBounds.maxTheta1 + theta1Range * expandFactor),
+                minTheta2: Math.max(-4*Math.PI, viewBounds.minTheta2 - theta2Range * expandFactor),
+                maxTheta2: Math.min(4*Math.PI, viewBounds.maxTheta2 + theta2Range * expandFactor)
+            };
+            
+            generateFractal();
+        }
+        
+        function toggleMapMode() {
+            if (state.isGenerating) return;
+            
+            const toggle = document.getElementById('mapToggle');
+            const modeInfo = document.getElementById('modeInfo');
+            
+            if (state.mapMode === 'chaos') {
+                state.mapMode = 'flow';
+                toggle.classList.remove('active');
+                modeInfo.textContent = 'Flow mode: Shows motion fields';
+            } else {
+                state.mapMode = 'chaos';
+                toggle.classList.add('active');
+                modeInfo.textContent = 'Chaos mode: Click to simulate';
+            }
+            generateInfiniteMap();
+        }
+        
+        function updateCoordinates(e) {
+            if (!fractalCanvas) return;
+            
+            const rect = fractalCanvas.getBoundingClientRect();
+            const canvasX = (e.clientX - rect.left) * (fractalCanvas.width / rect.width);
+            const canvasY = (e.clientY - rect.top) * (fractalCanvas.height / rect.height);
+            
+            if (canvasX >= 0 && canvasX <= fractalCanvas.width && canvasY >= 0 && canvasY <= fractalCanvas.height) {
+                const coords = canvasToMathCoords(canvasX, canvasY);
+                
+                const currentSpan = state.currentViewBounds.maxTheta1 - state.currentViewBounds.minTheta1;
+                const zoomLevel = (2 * Math.PI) / currentSpan;
+                
+                document.getElementById('coordinates').innerHTML = 
+                    `θ₁: ${coords.theta1.toFixed(3)}, θ₂: ${coords.theta2.toFixed(3)}<br>Detail: ${zoomLevel.toFixed(1)}x | Click to simulate`;
+            }
+        }
+        
+        // Zoom functions
+        function zoomAction(factor, centerX, centerY) {
+            const viewport = document.getElementById('viewport');
+            const rect = viewport.getBoundingClientRect();
+            
+            if (centerX === undefined) centerX = rect.width / 2;
+            if (centerY === undefined) centerY = rect.height / 2;
+            
+            const newZoom = Math.max(0.05, Math.min(50, state.zoom * factor));
+            
+            if (newZoom !== state.zoom) {
+                // Calculate world coordinates of zoom center
+                const worldX = (centerX - state.panX) / state.zoom;
+                const worldY = (centerY - state.panY) / state.zoom;
+                
+                // Update zoom and recalculate pan to keep center point fixed
+                state.zoom = newZoom;
+                state.panX = centerX - worldX * state.zoom;
+                state.panY = centerY - worldY * state.zoom;
+                
+                updateTransform();
+                updateMinimap();
+                document.getElementById('zoomLevel').textContent = Math.round(state.zoom * 100) + '%';
+            }
+        }
+        
+        function zoomIn() { zoomAction(1.5); }
+        function zoomOut() { zoomAction(1/1.5); }
+        
+        function resetView() {
+            state.zoom = 1;
+            state.panX = 0;
+            state.panY = 0;
+            state.currentViewBounds = { 
+                minTheta1: -Math.PI, 
+                maxTheta1: Math.PI, 
+                minTheta2: -Math.PI, 
+                maxTheta2: Math.PI 
+            };
+            
+            updateTransform();
+            updateMinimap();
+            document.getElementById('zoomLevel').textContent = '100%';
+            generateInfiniteMap();
+        }
+        
+        function updateMinimap() {
+            minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+            
+            // Draw minimap background
+            minimapCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            minimapCtx.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+            
+            if (state.fractalImageData) {
+                // Draw the fractal at lower resolution
+                minimapCtx.drawImage(fractalCanvas, 0, 0, minimapCanvas.width, minimapCanvas.height);
+            }
+            
+            // Update viewport indicator
+            const viewport = document.getElementById('viewport');
+            const viewportRect = viewport.getBoundingClientRect();
+            const indicator = document.getElementById('viewportIndicator');
+            
+            // Calculate visible area as fraction of total canvas
+            const scaleX = minimapCanvas.width / fractalCanvas.width;
+            const scaleY = minimapCanvas.height / fractalCanvas.height;
+            
+            const viewLeft = Math.max(0, Math.min(minimapCanvas.width, -state.panX / state.zoom * scaleX));
+            const viewTop = Math.max(0, Math.min(minimapCanvas.height, -state.panY / state.zoom * scaleY));
+            const viewWidth = Math.max(0, Math.min(minimapCanvas.width - viewLeft, viewportRect.width / state.zoom * scaleX));
+            const viewHeight = Math.max(0, Math.min(minimapCanvas.height - viewTop, viewportRect.height / state.zoom * scaleY));
+            
+            indicator.style.left = viewLeft + 'px';
+            indicator.style.top = viewTop + 'px';
+            indicator.style.width = viewWidth + 'px';
+            indicator.style.height = viewHeight + 'px';
+        }
+        
+        // Audio initialization and management
+        function initAudio() {
+            try {
+                if (!state.audioContext) {
+                    state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    state.masterGain = state.audioContext.createGain();
+                    state.gainNode1 = state.audioContext.createGain();
+                    state.gainNode2 = state.audioContext.createGain();
+                    
+                    state.masterGain.connect(state.audioContext.destination);
+                    state.gainNode1.connect(state.masterGain);
+                    state.gainNode2.connect(state.masterGain);
+                    
+                    state.gainNode1.gain.value = 0.15;
+                    state.gainNode2.gain.value = 0.15;
+                    state.masterGain.gain.value = 0.2;
+                }
+            } catch (e) {
+                console.warn('Audio not supported:', e);
+            }
+        }
+        
+        function startDoublePendulum(initialTheta1, initialTheta2) {
+            initAudio();
+            
+            if (state.animationId) {
+                cancelAnimationFrame(state.animationId);
+                stopAudio();
+            }
+            
+            state.theta1 = initialTheta1;
+            state.theta2 = initialTheta2;
+            state.omega1 = 0;
+            state.omega2 = 0;
+            state.time = 0;
+            state.trail = [];
+            state.patternPoints = [];
+            state.waveData1 = [];
+            state.waveData2 = [];
+            state.poincareCounter = 0;
+            
+            clearCanvases();
+            startAudio();
+            animate();
+            document.getElementById('status').textContent = 'Simulating...';
+        }
+        
+        function clearCanvases() {
+            pendulumCtx.clearRect(0, 0, pendulumCanvas.width, pendulumCanvas.height);
+            waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+            patternCtx.clearRect(0, 0, patternCanvas.width, patternCanvas.height);
+        }
+        
+        function startAudio() {
+            if (!state.audioContext) return;
+            
+            try {
+                if (state.audioContext.state === 'suspended') {
+                    state.audioContext.resume();
+                }
+                
+                if (state.oscillator1) state.oscillator1.stop();
+                if (state.oscillator2) state.oscillator2.stop();
+                
+                state.oscillator1 = state.audioContext.createOscillator();
+                state.oscillator2 = state.audioContext.createOscillator();
+                state.oscillator1.type = 'sine';
+                state.oscillator2.type = 'sine';
+                
+                state.oscillator1.connect(state.gainNode1);
+                state.oscillator2.connect(state.gainNode2);
+                
+                state.oscillator1.start();
+                state.oscillator2.start();
+                state.isPlaying = true;
+            } catch (e) {
+                console.warn('Audio start failed:', e);
+            }
+        }
+        
+        function stopAudio() {
+            try {
+                if (state.oscillator1) {
+                    state.oscillator1.stop();
+                    state.oscillator1 = null;
+                }
+                if (state.oscillator2) {
+                    state.oscillator2.stop();
+                    state.oscillator2 = null;
+                }
+                state.isPlaying = false;
+            } catch (e) {
+                console.warn('Audio stop failed:', e);
+            }
+        }
+        
+        function animate() {
+            const dt = 0.016;
+            const result = doublePendulumStep(state.theta1, state.theta2, state.omega1, state.omega2, dt);
+            
+            state.theta1 = result.theta1;
+            state.theta2 = result.theta2;
+            state.omega1 = result.omega1;
+            state.omega2 = result.omega2;
+            
+            // Update pendulum positions
+            const centerX = pendulumCanvas.width / 2;
+            const centerY = pendulumCanvas.height / 4;
+            
+            state.x1 = centerX + L1 * Math.sin(state.theta1);
+            state.y1 = centerY + L1 * Math.cos(state.theta1);
+            state.x2 = state.x1 + L2 * Math.sin(state.theta2);
+            state.y2 = state.y1 + L2 * Math.cos(state.theta2);
+            
+            // Update trail
+            state.trail.push({ x: state.x2, y: state.y2 });
+            if (state.trail.length > 800) {
+                state.trail.shift();
+            }
+            
+            // Update pattern data
+            if (state.patternMode === 'poincare' && Math.abs(state.omega1) < 0.1 && state.poincareCounter % 10 === 0) {
+                state.patternPoints.push({
+                    x: (state.theta1 + Math.PI) * 140 / (2 * Math.PI),
+                    y: (state.theta2 + Math.PI) * 75 / (2 * Math.PI)
+                });
+            } else if (state.patternMode === 'trail') {
+                const px = (state.theta1 + Math.PI) * 140 / (2 * Math.PI);
+                const py = (state.theta2 + Math.PI) * 75 / (2 * Math.PI);
+                state.patternPoints.push({ x: px, y: py });
+                if (state.patternPoints.length > 1000) {
+                    state.patternPoints.shift();
+                }
+            }
+            state.poincareCounter++;
+            
+            // Update wave data
+            state.waveData1.push(state.theta1);
+            state.waveData2.push(state.theta2);
+            if (state.waveData1.length > 200) {
+                state.waveData1.shift();
+                state.waveData2.shift();
+            }
+            
+            // Update audio
+            if (state.isPlaying && state.oscillator1 && state.oscillator2) {
+                try {
+                    const freq1 = 220 + Math.abs(state.omega1) * 50;
+                    const freq2 = 330 + Math.abs(state.omega2) * 60;
+                    
+                    state.oscillator1.frequency.setValueAtTime(freq1, state.audioContext.currentTime);
+                    state.oscillator2.frequency.setValueAtTime(freq2, state.audioContext.currentTime);
+                    
+                    state.gainNode1.gain.setValueAtTime(Math.min(0.15, Math.abs(state.omega1) * 0.05), state.audioContext.currentTime);
+                    state.gainNode2.gain.setValueAtTime(Math.min(0.15, Math.abs(state.omega2) * 0.05), state.audioContext.currentTime);
+                    
+                    document.getElementById('freq1').textContent = freq1.toFixed(1);
+                    document.getElementById('freq2').textContent = freq2.toFixed(1);
+                    document.getElementById('beatFreq').textContent = Math.abs(freq1 - freq2).toFixed(1);
+                } catch (e) {
+                    console.warn('Audio update failed:', e);
+                }
+            }
+            
+            drawPendulum();
+            drawWave();
+            drawPattern();
+            updateDisplays();
+            
+            state.time += dt;
+            state.animationId = requestAnimationFrame(animate);
+        }
+        
+        function drawPendulum() {
+            pendulumCtx.clearRect(0, 0, pendulumCanvas.width, pendulumCanvas.height);
+            
+            const centerX = pendulumCanvas.width / 2;
+            const centerY = pendulumCanvas.height / 4;
+            
+            // Draw trail
+            if (state.trail.length > 1) {
+                for (let i = 1; i < state.trail.length; i++) {
+                    const alpha = i / state.trail.length * 0.8;
+                    const hue = (i / state.trail.length) * 60 + 300;
+                    pendulumCtx.strokeStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+                    pendulumCtx.lineWidth = 2;
+                    pendulumCtx.beginPath();
+                    pendulumCtx.moveTo(state.trail[i-1].x, state.trail[i-1].y);
+                    pendulumCtx.lineTo(state.trail[i].x, state.trail[i].y);
+                    pendulumCtx.stroke();
+                }
+            }
+            
+            // Draw pendulum arms
+            pendulumCtx.strokeStyle = '#ffffff';
+            pendulumCtx.lineWidth = 3;
+            pendulumCtx.beginPath();
+            pendulumCtx.moveTo(centerX, centerY);
+            pendulumCtx.lineTo(state.x1, state.y1);
+            pendulumCtx.lineTo(state.x2, state.y2);
+            pendulumCtx.stroke();
+            
+            // Draw masses
+            pendulumCtx.fillStyle = '#ff6b6b';
+            pendulumCtx.beginPath();
+            pendulumCtx.arc(state.x1, state.y1, 8, 0, Math.PI * 2);
+            pendulumCtx.fill();
+            
+            pendulumCtx.fillStyle = '#4ecdc4';
+            pendulumCtx.beginPath();
+            pendulumCtx.arc(state.x2, state.y2, 10, 0, Math.PI * 2);
+            pendulumCtx.fill();
+            
+            // Draw pivot
+            pendulumCtx.fillStyle = '#ffffff';
+            pendulumCtx.beginPath();
+            pendulumCtx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+            pendulumCtx.fill();
+        }
+        
+        function drawWave() {
+            waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+            
+            if (state.waveData1.length < 2) return;
+            
+            const width = waveCanvas.width;
+            const height = waveCanvas.height;
+            const midY = height / 2;
+            
+            // Draw center line
+            waveCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            waveCtx.lineWidth = 1;
+            waveCtx.beginPath();
+            waveCtx.moveTo(0, midY);
+            waveCtx.lineTo(width, midY);
+            waveCtx.stroke();
+            
+            // Draw waveforms
+            const colors = ['#ff6b6b', '#4ecdc4'];
+            const waveDataArrays = [state.waveData1, state.waveData2];
+            
+            waveDataArrays.forEach((waveData, idx) => {
+                waveCtx.strokeStyle = colors[idx];
+                waveCtx.lineWidth = 2;
+                waveCtx.beginPath();
+                
+                for (let i = 0; i < waveData.length; i++) {
+                    const x = (i / waveData.length) * width;
+                    const y = midY + (waveData[i] / Math.PI) * (height / 4);
+                    if (i === 0) {
+                        waveCtx.moveTo(x, y);
+                    } else {
+                        waveCtx.lineTo(x, y);
+                    }
+                }
+                waveCtx.stroke();
+            });
+            
+            // Draw frequency spectrum
+            if (state.waveData1.length > 50) {
+                const fft1 = simpleFFT(state.waveData1.slice(-64));
+                const fft2 = simpleFFT(state.waveData2.slice(-64));
+                
+                [fft1, fft2].forEach((fft, idx) => {
+                    waveCtx.fillStyle = idx ? 'rgba(78, 205, 196, 0.3)' : 'rgba(255, 107, 107, 0.3)';
+                    for (let i = 1; i < Math.min(20, fft.length); i++) {
+                        const barHeight = Math.abs(fft[i]) * 50;
+                        const x = i * (width / 20);
+                        waveCtx.fillRect(x, height - barHeight, width / 20 - 1, barHeight);
+                    }
+                });
+            }
+        }
+        
+        function simpleFFT(data) {
+            const N = data.length;
+            const result = [];
+            
+            for (let k = 0; k < N / 2; k++) {
+                let real = 0;
+                let imag = 0;
+                
+                for (let n = 0; n < N; n++) {
+                    const angle = -2 * Math.PI * k * n / N;
+                    real += data[n] * Math.cos(angle);
+                    imag += data[n] * Math.sin(angle);
+                }
+                
+                result.push(Math.sqrt(real * real + imag * imag) / N);
+            }
+            
+            return result;
+        }
+        
+        function drawPattern() {
+            patternCtx.clearRect(0, 0, patternCanvas.width, patternCanvas.height);
+            
+            // Draw grid
+            patternCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            patternCtx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const x = (i / 4) * patternCanvas.width;
+                const y = (i / 4) * patternCanvas.height;
+                
+                patternCtx.beginPath();
+                patternCtx.moveTo(x, 0);
+                patternCtx.lineTo(x, patternCanvas.height);
+                patternCtx.moveTo(0, y);
+                patternCtx.lineTo(patternCanvas.width, y);
+                patternCtx.stroke();
+            }
+            
+            // Draw labels
+            patternCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            patternCtx.font = '10px monospace';
+            patternCtx.fillText('θ₁', patternCanvas.width - 15, patternCanvas.height - 5);
+            patternCtx.fillText('θ₂', 5, 10);
+            
+            // Draw pattern points
+            if (state.patternPoints.length > 1) {
+                if (state.patternMode === 'poincare') {
+                    patternCtx.fillStyle = '#4ecdc4';
+                    state.patternPoints.forEach(point => {
+                        patternCtx.beginPath();
+                        patternCtx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+                        patternCtx.fill();
+                    });
+                } else {
+                    for (let i = 1; i < state.patternPoints.length; i++) {
+                        const alpha = i / state.patternPoints.length;
+                        const hue = (i / state.patternPoints.length) * 60 + 200;
+                        patternCtx.strokeStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+                        patternCtx.lineWidth = 1;
+                        patternCtx.beginPath();
+                        patternCtx.moveTo(state.patternPoints[i-1].x, state.patternPoints[i-1].y);
+                        patternCtx.lineTo(state.patternPoints[i].x, state.patternPoints[i].y);
+                        patternCtx.stroke();
+                    }
+                }
+            }
+            
+            document.getElementById('pointCount').textContent = state.patternPoints.length;
+        }
+        
+        function updateDisplays() {
+            document.getElementById('theta1').textContent = (state.theta1 * 180 / Math.PI).toFixed(1);
+            document.getElementById('theta2').textContent = (state.theta2 * 180 / Math.PI).toFixed(1);
+            document.getElementById('omega1').textContent = state.omega1.toFixed(3);
+            document.getElementById('omega2').textContent = state.omega2.toFixed(3);
+            document.getElementById('energy').textContent = calculateEnergy(state.theta1, state.theta2, state.omega1, state.omega2).toFixed(2);
+        }
+        
+        // Fractal generation - FIXED VERSION
+        async function generateFractal() {
+            if (state.isGenerating) return;
+            
+            state.isGenerating = true;
+            state.generationCancelled = false;
+            
+            const width = fractalCanvas.width;
+            const height = fractalCanvas.height;
+            const imageData = fractalCtx.createImageData(width, height);
+            const totalPixels = width * height;
+            let processedPixels = 0;
+            
+            // Update UI
+            document.getElementById('regenerateBtn').disabled = true;
+            document.getElementById('statusText').textContent = 'Generating...';
+            document.getElementById('statusText').className = 'loading';
+            document.getElementById('progress').style.width = '0%';
+            
+            const bounds = state.currentViewBounds;
+            const spanTheta1 = bounds.maxTheta1 - bounds.minTheta1;
+            const spanTheta2 = bounds.maxTheta2 - bounds.minTheta2;
+            const detailLevel = (2 * Math.PI) / Math.max(spanTheta1, spanTheta2);
+            
+            document.getElementById('resolution').textContent = `${width}x${height} (${detailLevel.toFixed(1)}x detail)`;
+            
+            function processPixelBatch(startY, batchSize = 2) {
+                if (state.generationCancelled) {
+                    state.isGenerating = false;
+                    document.getElementById('regenerateBtn').disabled = false;
+                    document.getElementById('statusText').textContent = 'Cancelled';
+                    document.getElementById('statusText').className = '';
+                    return;
+                }
+                
+                const endY = Math.min(startY + batchSize, height);
+                
+                for (let y = startY; y < endY; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const theta1 = bounds.minTheta1 + (x / width) * spanTheta1;
+                        const theta2 = bounds.maxTheta2 - (y / height) * spanTheta2;
+                        
+                        let pixelIndex = (y * width + x) * 4;
+                        
+                        if (state.mapMode === 'flow') {
+                            const flowResult = calculateFlowVisualization(theta1, theta2, detailLevel);
+                            imageData.data[pixelIndex] = flowResult.r;
+                            imageData.data[pixelIndex + 1] = flowResult.g;
+                            imageData.data[pixelIndex + 2] = flowResult.b;
+                            imageData.data[pixelIndex + 3] = 255;
+                        } else {
+                            // Chaos mode
+                            const chaosResult = calculateChaosVisualization(theta1, theta2, detailLevel);
+                            imageData.data[pixelIndex] = chaosResult.r;
+                            imageData.data[pixelIndex + 1] = chaosResult.g;
+                            imageData.data[pixelIndex + 2] = chaosResult.b;
+                            imageData.data[pixelIndex + 3] = 255;
+                        }
+                        
+                        processedPixels++;
+                    }
+                }
+                
+                // Update progress
+                const progress = (processedPixels / totalPixels) * 100;
+                document.getElementById('progress').style.width = progress + '%';
+                
+                if (endY < height) {
+                    setTimeout(() => processPixelBatch(endY, batchSize), 1);
+                } else {
+                    // Generation complete
+                    state.fractalImageData = imageData;
+                    fractalCtx.putImageData(imageData, 0, 0);
+                    drawMapGrid();
+                    updateMinimap();
+                    
+                    state.isGenerating = false;
+                    document.getElementById('regenerateBtn').disabled = false;
+                    document.getElementById('statusText').textContent = 'Complete';
+                    document.getElementById('statusText').className = '';
+                    
+                    setTimeout(() => {
+                        document.getElementById('statusText').textContent = 'Ready';
+                    }, 2000);
+                }
+            }
+            
+            processPixelBatch(0);
+        }
+        
+        function calculateFlowVisualization(theta1, theta2, detailLevel) {
+            // Calculate flow field at this point
+            const flowField = calculateFlowField(theta1, theta2);
+            const flowMagnitude = Math.sqrt(flowField.dTheta1 * flowField.dTheta1 + flowField.dTheta2 * flowField.dTheta2);
+            const flowAngle = Math.atan2(flowField.dTheta2, flowField.dTheta1);
+            
+            // Create flow visualization with multiple patterns
+            const swirl = Math.sin(theta1 * 4 + flowAngle * 2) * Math.cos(theta2 * 4 + flowAngle * 2);
+            const streamlines = Math.sin((theta1 + theta2) * 3 + flowMagnitude * 10);
+            const vorticity = Math.sin(theta1 * 6) * Math.sin(theta2 * 6) * Math.sin(flowAngle * 8);
+            
+            // Combine patterns
+            let intensity = Math.max(0, Math.min(1, 
+                swirl * 0.3 + 
+                streamlines * 0.4 + 
+                vorticity * 0.2 + 
+                flowMagnitude * 0.3 + 
+                0.1
+            ));
+            
+            // Color mapping based on flow characteristics
+            let r, g, b;
+            const hue = ((flowAngle + Math.PI) / (2 * Math.PI)) * 360;
+            const saturation = Math.min(100, flowMagnitude * 100 + 50);
+            const lightness = Math.min(80, intensity * 60 + 20);
+            
+            const rgb = hslToRgb(hue / 360, saturation / 100, lightness / 100);
+            return { r: rgb[0], g: rgb[1], b: rgb[2] };
+        }
+        
+        function calculateChaosVisualization(theta1, theta2, detailLevel) {
+            const chaosResult = simulateToFinalState(theta1, theta2, detailLevel);
+            
+            let hue, saturation, lightness;
+            
+            if (chaosResult.flippedCount > 3) {
+                // High chaos - use theta2 for hue
+                hue = ((chaosResult.finalTheta2 + Math.PI) / (2 * Math.PI)) * 300 + 60;
+                saturation = Math.min(90, 60 + chaosResult.flippedCount * 3);
+                lightness = Math.min(70, 30 + chaosResult.maxSpeed * 5);
+            } else {
+                // Lower chaos - use theta1 for hue
+                hue = ((chaosResult.finalTheta1 + Math.PI) / (2 * Math.PI)) * 240;
+                saturation = Math.min(80, 30 + chaosResult.stability * 50);
+                lightness = Math.min(60, 15 + chaosResult.stability * 45);
+            }
+            
+            // Add energy-based modulation
+            const energyMod = Math.sin(chaosResult.totalEnergyVariation) * 0.1 + 0.9;
+            lightness *= energyMod;
+            
+            const rgb = hslToRgb(hue / 360, saturation / 100, lightness / 100);
+            return { r: rgb[0], g: rgb[1], b: rgb[2] };
+        }
+        
+        function calculateFlowField(theta1, theta2) {
+            // Fixed initial conditions for flow field
+            const omega1 = 0;
+            const omega2 = 0;
+            
+            const cos12 = Math.cos(theta1 - theta2);
+            const sin12 = Math.sin(theta1 - theta2);
+            const denom = 2 * M1 + M2 - M2 * Math.cos(2 * theta1 - 2 * theta2);
+            
+            // Avoid division by zero
+            if (Math.abs(denom) < 1e-10) {
+                return { dTheta1: 0, dTheta2: 0 };
+            }
+            
+            const num1 = -M2 * G * Math.sin(theta1 - 2 * theta2) - 
+                        2 * sin12 * M2 * (omega2 * omega2 * L2 + omega1 * omega1 * L1 * cos12);
+            const num2 = -2 * Math.sin(theta1 - theta2) * 
+                        (omega1 * omega1 * L1 * (M1 + M2) + G * (M1 + M2) * Math.cos(theta1) + 
+                         omega2 * omega2 * L2 * M2 * cos12);
+            
+            const a1 = (num1 - num2 * cos12) / (L1 * denom);
+            const a2 = num2 / (L2 * denom);
+            
+            const flowScale = 0.1;
+            return {
+                dTheta1: omega1 + a1 * flowScale,
+                dTheta2: omega2 + a2 * flowScale
+            };
+        }
+        
+        function simulateToFinalState(theta1, theta2, detailLevel) {
+            let tempTheta1 = theta1;
+            let tempTheta2 = theta2;
+            let tempOmega1 = 0;
+            let tempOmega2 = 0;
+            
+            let maxSpeed = 0;
+            let totalEnergyVariation = 0;
+            let flippedCount = 0;
+            
+            let lastEnergy = calculateEnergy(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+            let lastOmega1Sign = 0;
+            let lastOmega2Sign = 0;
+            
+            const baseSteps = Math.max(100, Math.min(500, 150 * Math.log(detailLevel + 1)));
+            const dt = Math.max(0.005, 0.02 / Math.sqrt(detailLevel + 1));
+            
+            for (let i = 0; i < baseSteps; i++) {
+                const result = doublePendulumStep(tempTheta1, tempTheta2, tempOmega1, tempOmega2, dt);
+                
+                tempTheta1 = result.theta1;
+                tempTheta2 = result.theta2;
+                tempOmega1 = result.omega1;
+                tempOmega2 = result.omega2;
+                
+                const speed = Math.abs(tempOmega1) + Math.abs(tempOmega2);
+                maxSpeed = Math.max(maxSpeed, speed);
+                
+                const currentEnergy = calculateEnergy(tempTheta1, tempTheta2, tempOmega1, tempOmega2);
+                totalEnergyVariation += Math.abs(currentEnergy - lastEnergy);
+                lastEnergy = currentEnergy;
+                
+                // Count direction changes (flips)
+                if (i > 10) {
+                    const omega1Sign = Math.sign(tempOmega1);
+                    const omega2Sign = Math.sign(tempOmega2);
+                    
+                    if (lastOmega1Sign !== 0 && omega1Sign !== lastOmega1Sign && Math.abs(tempOmega1) > 0.05) {
+                        flippedCount++;
+                    }
+                    if (lastOmega2Sign !== 0 && omega2Sign !== lastOmega2Sign && Math.abs(tempOmega2) > 0.05) {
+                        flippedCount++;
+                    }
+                    
+                    lastOmega1Sign = omega1Sign;
+                    lastOmega2Sign = omega2Sign;
+                }
+                
+                // Normalize angles to [-π, π]
+                tempTheta1 = ((tempTheta1 + Math.PI) % (2 * Math.PI)) - Math.PI;
+                tempTheta2 = ((tempTheta2 + Math.PI) % (2 * Math.PI)) - Math.PI;
+            }
+            
+            return {
+                finalTheta1: tempTheta1,
+                finalTheta2: tempTheta2,
+                maxSpeed: Math.min(maxSpeed, 25),
+                stability: Math.max(0, Math.min(1, 1 / (totalEnergyVariation + 0.1))),
+                flippedCount: Math.min(flippedCount, 50),
+                totalEnergyVariation: totalEnergyVariation
+            };
+        }
+        
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+        
+        function drawMapGrid() {
+            fractalCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            fractalCtx.lineWidth = 1;
+            
+            // Draw grid lines
+            for (let i = 1; i < 4; i++) {
+                const x = (i / 4) * fractalCanvas.width;
+                const y = (i / 4) * fractalCanvas.height;
+                
+                fractalCtx.beginPath();
+                fractalCtx.moveTo(x, 0);
+                fractalCtx.lineTo(x, fractalCanvas.height);
+                fractalCtx.moveTo(0, y);
+                fractalCtx.lineTo(fractalCanvas.width, y);
+                fractalCtx.stroke();
+            }
+            
+            // Draw coordinate labels
+            fractalCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            fractalCtx.font = '12px monospace';
+            fractalCtx.fillText('θ₁', fractalCanvas.width - 20, fractalCanvas.height - 5);
+            fractalCtx.fillText('θ₂', 5, 15);
+        }
+        
+        // Pattern controls
+        function clearPattern() {
+            state.patternPoints = [];
+            drawPattern();
+        }
+        
+        function togglePatternMode() {
+            state.patternMode = state.patternMode === 'trail' ? 'poincare' : 'trail';
+            document.getElementById('patternMode').textContent = 
+                state.patternMode === 'trail' ? 'Trail' : 'Poincaré';
+            clearPattern();
+        }
+        
+        // Event handlers for zoom and pan
+        function initZoomPan() {
+            const viewport = document.getElementById('viewport');
+            
+            // Mouse wheel zoom
+            viewport.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                
+                const rect = viewport.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                const zoomFactor = e.deltaY > 0 ? 0.85 : 1.15;
+                zoomAction(zoomFactor, mouseX, mouseY);
+            });
+            
+            // Mouse drag pan
+            viewport.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return; // Only left mouse button
+                state.isDragging = true;
+                state.lastMouseX = e.clientX;
+                state.lastMouseY = e.clientY;
+                viewport.style.cursor = 'grabbing';
+                e.preventDefault();
+            });
+            
+            viewport.addEventListener('mousemove', (e) => {
+                if (state.isDragging) {
+                    const deltaX = e.clientX - state.lastMouseX;
+                    const deltaY = e.clientY - state.lastMouseY;
+                    
+                    state.panX += deltaX;
+                    state.panY += deltaY;
+                    
+                    updateTransform();
+                    updateMinimap();
+                    
+                    state.lastMouseX = e.clientX;
+                    state.lastMouseY = e.clientY;
+                } else {
+                    updateCoordinates(e);
+                }
+            });
+            
+            viewport.addEventListener('mouseup', (e) => {
+                if (e.button !== 0) return;
+                state.isDragging = false;
+                viewport.style.cursor = 'grab';
+            });
+            
+            viewport.addEventListener('mouseleave', () => {
+                state.isDragging = false;
+                viewport.style.cursor = 'grab';
+            });
+            
+            // Click to start simulation
+            fractalCanvas.addEventListener('click', (e) => {
+                if (state.isDragging) return;
+                
+                const rect = fractalCanvas.getBoundingClientRect();
+                const canvasX = (e.clientX - rect.left) * (fractalCanvas.width / rect.width);
+                const canvasY = (e.clientY - rect.top) * (fractalCanvas.height / rect.height);
+                const coords = canvasToMathCoords(canvasX, canvasY);
+                
+                startDoublePendulum(coords.theta1, coords.theta2);
+                
+                // Draw click indicator
+                fractalCtx.save();
+                fractalCtx.strokeStyle = '#ffffff';
+                fractalCtx.lineWidth = 3;
+                fractalCtx.shadowColor = '#ffffff';
+                fractalCtx.shadowBlur = 10;
+                fractalCtx.beginPath();
+                fractalCtx.arc(canvasX, canvasY, 8, 0, Math.PI * 2);
+                fractalCtx.stroke();
+                fractalCtx.restore();
+                
+                // Clear indicator after a while
+                setTimeout(() => {
+                    if (state.fractalImageData) {
+                        fractalCtx.putImageData(state.fractalImageData, 0, 0);
+                        drawMapGrid();
+                    }
+                }, 1500);
+            });
+        }
+        
+        // Initialize on page load
+        window.addEventListener('load', function() {
+            initZoomPan();
+            document.getElementById('zoomLevel').textContent = '100%';
+            
+            // Generate initial fractal
+            setTimeout(() => {
+                generateInfiniteMap();
+            }, 100);
+            
+            // Initialize audio on first user interaction
+            document.addEventListener('click', () => {
+                if (!state.audioContext) {
+                    initAudio();
+                }
+            }, { once: true });
+            
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                updateMinimap();
+            });
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'r':
+                case 'R':
+                    e.preventDefault();
+                    generateInfiniteMap();
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    resetView();
+                    break;
+                case 't':
+                case 'T':
+                    e.preventDefault();
+                    toggleMapMode();
+                    break;
+                case 'c':
+                case 'C':
+                    e.preventDefault();
+                    clearPattern();
+                    break;
+                case 'p':
+                case 'P':
+                    e.preventDefault();
+                    togglePatternMode();
+                    break;
+                case '+':
+                case '=':
+                    e.preventDefault();
+                    zoomIn();
+                    break;
+                case '-':
+                case '_':
+                    e.preventDefault();
+                    zoomOut();
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>

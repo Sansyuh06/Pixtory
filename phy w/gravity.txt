@@ -1,0 +1,1060 @@
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/constants.hpp>
+#include <vector>
+#include <iostream>
+#include <string>
+#include <cmath>
+#include <map>
+#include <sstream>
+#include <iomanip>
+#include <random>
+#include <algorithm>
+
+// Window size
+const int WIDTH = 1280;
+const int HEIGHT = 720;
+
+// Simple bitmap font data for basic characters (8x8 pixel font)
+const int FONT_WIDTH = 8;
+const int FONT_HEIGHT = 8;
+
+// Basic bitmap font data for essential characters
+std::map<char, std::vector<uint8_t>> fontData = {
+    {'G', {0x3E, 0x40, 0x40, 0x4E, 0x42, 0x42, 0x3E, 0x00}},
+    {'=', {0x00, 0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00}},
+    {'m', {0x00, 0x00, 0x76, 0x49, 0x49, 0x49, 0x49, 0x00}},
+    {'M', {0x41, 0x63, 0x55, 0x49, 0x41, 0x41, 0x41, 0x00}},
+    {'g', {0x00, 0x00, 0x3F, 0x41, 0x3F, 0x01, 0x3E, 0x00}},
+    {'k', {0x40, 0x44, 0x48, 0x70, 0x48, 0x44, 0x42, 0x00}},
+    {'r', {0x00, 0x00, 0x5C, 0x62, 0x40, 0x40, 0x40, 0x00}},
+    {'(', {0x0C, 0x10, 0x20, 0x20, 0x20, 0x10, 0x0C, 0x00}},
+    {')', {0x30, 0x08, 0x04, 0x04, 0x04, 0x08, 0x30, 0x00}},
+    {'^', {0x10, 0x28, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    {'2', {0x3C, 0x42, 0x02, 0x1C, 0x20, 0x40, 0x7E, 0x00}},
+    {'/', {0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00}},
+    {'4', {0x08, 0x18, 0x28, 0x48, 0x7E, 0x08, 0x08, 0x00}},
+    {'*', {0x00, 0x22, 0x14, 0x7F, 0x14, 0x22, 0x00, 0x00}},
+    {'0', {0x3C, 0x42, 0x46, 0x4A, 0x52, 0x62, 0x3C, 0x00}},
+    {'1', {0x18, 0x28, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00}},
+    {'3', {0x3C, 0x42, 0x02, 0x1C, 0x02, 0x42, 0x3C, 0x00}},
+    {'5', {0x7E, 0x40, 0x7C, 0x02, 0x02, 0x42, 0x3C, 0x00}},
+    {'6', {0x1C, 0x20, 0x40, 0x7C, 0x42, 0x42, 0x3C, 0x00}},
+    {'7', {0x7E, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00}},
+    {'8', {0x3C, 0x42, 0x42, 0x3C, 0x42, 0x42, 0x3C, 0x00}},
+    {'9', {0x3C, 0x42, 0x42, 0x3E, 0x02, 0x04, 0x38, 0x00}},
+    {'.', {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00}},
+    {'-', {0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00}},
+    {'+', {0x00, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x00, 0x00}},
+    {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    {'x', {0x00, 0x00, 0x42, 0x24, 0x18, 0x24, 0x42, 0x00}},
+    {'y', {0x00, 0x00, 0x42, 0x42, 0x26, 0x1A, 0x02, 0x3C}},
+    {'z', {0x00, 0x00, 0x7E, 0x04, 0x18, 0x20, 0x7E, 0x00}},
+    {'t', {0x10, 0x10, 0x7C, 0x10, 0x10, 0x12, 0x0C, 0x00}},
+    {'|', {0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00}},
+    {'c', {0x00, 0x00, 0x1E, 0x20, 0x20, 0x20, 0x1E, 0x00}},
+    {'[', {0x3C, 0x20, 0x20, 0x20, 0x20, 0x20, 0x3C, 0x00}},
+    {']', {0x3C, 0x04, 0x04, 0x04, 0x04, 0x04, 0x3C, 0x00}},
+    {',', {0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x10, 0x20}},
+    {'N', {0x42, 0x62, 0x52, 0x4A, 0x46, 0x42, 0x42, 0x00}},
+    {'s', {0x00, 0x00, 0x1E, 0x20, 0x1C, 0x02, 0x3C, 0x00}},
+    {'a', {0x00, 0x00, 0x1C, 0x02, 0x1E, 0x22, 0x1E, 0x00}},
+    {'l', {0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x06, 0x00}},
+    {'o', {0x00, 0x00, 0x1C, 0x22, 0x22, 0x22, 0x1C, 0x00}},
+    {'e', {0x00, 0x00, 0x1C, 0x22, 0x3E, 0x20, 0x1E, 0x00}},
+    {'n', {0x00, 0x00, 0x5C, 0x62, 0x42, 0x42, 0x42, 0x00}},
+    {'i', {0x08, 0x00, 0x18, 0x08, 0x08, 0x08, 0x1C, 0x00}},
+    {'w', {0x00, 0x00, 0x41, 0x49, 0x55, 0x63, 0x41, 0x00}},
+    {'T', {0x7F, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00}},
+    {'A', {0x18, 0x24, 0x42, 0x7E, 0x42, 0x42, 0x42, 0x00}},
+    {'R', {0x7C, 0x42, 0x42, 0x7C, 0x48, 0x44, 0x42, 0x00}},
+    {'O', {0x3C, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3C, 0x00}},
+    {'B', {0x7C, 0x42, 0x42, 0x7C, 0x42, 0x42, 0x7C, 0x00}},
+    {'I', {0x3E, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00}},
+    {'U', {0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3C, 0x00}},
+    {'E', {0x7F, 0x40, 0x40, 0x7E, 0x40, 0x40, 0x7F, 0x00}},
+    {'S', {0x3E, 0x40, 0x40, 0x3C, 0x02, 0x02, 0x7C, 0x00}},
+    {'C', {0x3E, 0x40, 0x40, 0x40, 0x40, 0x40, 0x3E, 0x00}},
+    {'L', {0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x7E, 0x00}},
+    {'u', {0x00, 0x00, 0x42, 0x42, 0x42, 0x46, 0x3A, 0x00}},
+    {'p', {0x00, 0x00, 0x5C, 0x62, 0x62, 0x5C, 0x40, 0x40}},
+    {'F', {0x7E, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x00}},
+    {'h', {0x40, 0x40, 0x5C, 0x62, 0x42, 0x42, 0x42, 0x00}},
+    {'d', {0x02, 0x02, 0x1E, 0x22, 0x22, 0x22, 0x1E, 0x00}},
+    {'v', {0x00, 0x00, 0x42, 0x42, 0x42, 0x24, 0x18, 0x00}},
+    {'b', {0x40, 0x40, 0x5C, 0x62, 0x42, 0x62, 0x5C, 0x00}},
+    {'D', {0x78, 0x44, 0x42, 0x42, 0x42, 0x44, 0x78, 0x00}},
+    {'W', {0x41, 0x41, 0x49, 0x49, 0x55, 0x63, 0x41, 0x00}},
+    {'Q', {0x3C, 0x42, 0x42, 0x52, 0x4A, 0x46, 0x3A, 0x00}},
+    {'j', {0x04, 0x00, 0x0C, 0x04, 0x04, 0x44, 0x38, 0x00}},
+    {'f', {0x0E, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x10, 0x00}},
+    {':', {0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00, 0x00}}
+};
+
+// Text rendering globals
+unsigned int textVAO = 0, textVBO = 0;
+unsigned int fontTexture = 0;
+
+// Mass structure
+struct Mass {
+    glm::vec3 position;
+    float mass;
+    glm::vec3 color;
+    float radius;
+
+    Mass(glm::vec3 pos, float m, glm::vec3 col) : position(pos), mass(m), color(col) {
+        radius = 0.2f + mass * 0.1f;
+    }
+};
+
+// Field line structure for smooth curves
+struct FieldLine {
+    std::vector<glm::vec3> points;
+    float intensity;
+    glm::vec3 color;
+};
+
+// Test particle structure
+struct TestParticle {
+    glm::vec3 position;
+    glm::vec3 velocity;
+    glm::vec3 color;
+    std::vector<glm::vec3> trail;
+    float life;
+    bool active;
+    
+    TestParticle() : velocity(0.0f), life(1.0f), active(false) {
+        color = glm::vec3(1.0f, 0.6f, 0.2f);
+    }
+};
+
+std::vector<Mass> masses;
+std::vector<FieldLine> fieldLines;
+std::vector<TestParticle> testParticles;
+
+// Camera setup
+glm::vec3 cameraPos = glm::vec3(0.0f, 5.0f, 12.0f);
+glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+float cameraYaw = -90.0f, cameraPitch = -25.0f;
+double cameraDistance = 12.0;
+bool mouseButtonPressed = false;
+double lastMouseX = 0.0, lastMouseY = 0.0;
+float simulationTime = 0.0f;
+bool autoRotate = true;
+bool freeCameraMode = false;
+bool showTestParticles = true;
+bool showFieldLines = true;
+
+glm::mat4 view = glm::mat4(1.0f);
+
+// Enhanced shader sources
+const char* vertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+uniform mat4 mvp;
+void main() {
+    gl_Position = mvp * vec4(aPos, 1.0);
+}
+)";
+
+const char* fragmentShaderSource = R"(
+#version 330 core
+out vec4 FragColor;
+uniform vec3 color;
+uniform float alpha;
+void main() {
+    FragColor = vec4(color, alpha);
+}
+)";
+
+const char* sphereVertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+uniform mat4 mvp;
+uniform mat4 model;
+out vec3 FragPos;
+out vec3 Normal;
+
+void main() {
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(model))) * aPos;
+    gl_Position = mvp * vec4(aPos, 1.0);
+}
+)";
+
+const char* sphereFragmentShaderSource = R"(
+#version 330 core
+in vec3 FragPos;
+in vec3 Normal;
+out vec4 FragColor;
+
+uniform vec3 massColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform float time;
+
+void main() {
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    
+    // Enhanced lighting
+    float ambient = 0.3;
+    float diff = max(dot(norm, lightDir), 0.0);
+    
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 128);
+    
+    // Subtle glow effect
+    float rimDot = 1.0 - dot(viewDir, norm);
+    float rim = pow(rimDot, 3.0) * 0.6;
+    
+    // Gentle pulsing
+    float pulse = 0.95 + 0.05 * sin(time * 3.0);
+    
+    vec3 result = (ambient + diff + spec * 0.5 + rim) * massColor * pulse;
+    FragColor = vec4(result, 1.0);
+}
+)";
+
+const char* particleVertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+uniform mat4 mvp;
+uniform float pointSize;
+
+void main() {
+    gl_Position = mvp * vec4(aPos, 1.0);
+    gl_PointSize = pointSize;
+}
+)";
+
+const char* particleFragmentShaderSource = R"(
+#version 330 core
+out vec4 FragColor;
+uniform vec3 color;
+uniform float alpha;
+
+void main() {
+    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(circCoord, circCoord);
+    if (dist > 1.0) discard;
+    
+    float intensity = 1.0 - smoothstep(0.0, 1.0, dist);
+    FragColor = vec4(color, alpha * intensity);
+}
+)";
+
+const char* textVertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec4 vertex;
+out vec2 TexCoords;
+uniform mat4 projection;
+
+void main() {
+    gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
+    TexCoords = vertex.zw;
+}
+)";
+
+const char* textFragmentShaderSource = R"(
+#version 330 core
+in vec2 TexCoords;
+out vec4 color;
+
+uniform sampler2D text;
+uniform vec3 textColor;
+
+void main() {
+    vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
+    color = vec4(textColor, 1.0) * sampled;
+}
+)";
+
+// Shader compilation (same as before)
+GLuint compileShader(const char* source, GLenum type) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, NULL, infoLog);
+        std::cerr << "Shader compilation error: " << infoLog << std::endl;
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource) {
+    GLuint vertexShader = compileShader(vertexSource, GL_VERTEX_SHADER);
+    GLuint fragmentShader = compileShader(fragmentSource, GL_FRAGMENT_SHADER);
+    if (vertexShader == 0 || fragmentShader == 0) {
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        return 0;
+    }
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+    GLint success;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(program, 512, NULL, infoLog);
+        std::cerr << "Program linking error: " << infoLog << std::endl;
+        glDeleteProgram(program);
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        return 0;
+    }
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    return program;
+}
+
+// Initialize bitmap font texture (same as before)
+bool initTextRendering() {
+    const int texWidth = 16 * FONT_WIDTH;
+    const int texHeight = 8 * FONT_HEIGHT;
+    std::vector<uint8_t> textureData(texWidth * texHeight, 0);
+
+    for (const auto& pair : fontData) {
+        char c = pair.first;
+        const std::vector<uint8_t>& bitmap = pair.second;
+        int charX = (c % 16) * FONT_WIDTH;
+        int charY = (c / 16) * FONT_HEIGHT;
+
+        for (int y = 0; y < FONT_HEIGHT; ++y) {
+            uint8_t row = bitmap[y];
+            for (int x = 0; x < FONT_WIDTH; ++x) {
+                int pixelIndex = (charY + y) * texWidth + (charX + x);
+                textureData[pixelIndex] = (row & (1 << (FONT_WIDTH - 1 - x))) ? 255 : 0;
+            }
+        }
+    }
+
+    glGenTextures(1, &fontTexture);
+    glBindTexture(GL_TEXTURE_2D, fontTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texWidth, texHeight, 0, GL_RED, GL_UNSIGNED_BYTE, textureData.data());
+
+    glGenVertexArrays(1, &textVAO);
+    glGenBuffers(1, &textVBO);
+    glBindVertexArray(textVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    return true;
+}
+
+void renderText(GLuint shader, const std::string& text, float x, float y, float scale, glm::vec3 color) {
+    glUseProgram(shader);
+    GLint textColorLoc = glGetUniformLocation(shader, "textColor");
+    if (textColorLoc != -1) {
+        glUniform3f(textColorLoc, color.x, color.y, color.z);
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(textVAO);
+
+    glm::mat4 projection = glm::ortho(0.0f, (float)WIDTH, 0.0f, (float)HEIGHT);
+    GLint projLoc = glGetUniformLocation(shader, "projection");
+    if (projLoc != -1) {
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+    }
+
+    float startX = x;
+    for (size_t i = 0; i < text.length(); ++i) {
+        char c = text[i];
+        if (c == '\n') {
+            y -= 30 * scale;
+            x = startX;
+            continue;
+        }
+
+        if (fontData.find(c) == fontData.end()) {
+            c = ' ';
+        }
+
+        float xpos = x;
+        float ypos = y;
+        float w = 20 * scale;
+        float h = 30 * scale;
+
+        float texX = (c % 16) / 16.0f;
+        float texY = (c / 16) / 8.0f;
+        float texW = 1.0f / 16.0f;
+        float texH = 1.0f / 8.0f;
+
+        float vertices[6][4] = {
+            { xpos,     ypos + h,   texX,         texY },
+            { xpos,     ypos,       texX,         texY + texH },
+            { xpos + w, ypos,       texX + texW,  texY + texH },
+            { xpos,     ypos + h,   texX,         texY },
+            { xpos + w, ypos,       texX + texW,  texY + texH },
+            { xpos + w, ypos + h,   texX + texW,  texY }
+        };
+
+        glBindTexture(GL_TEXTURE_2D, fontTexture);
+        glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        x += w * 0.6f;
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& indices, float radius, int slices, int stacks) {
+    vertices.clear();
+    indices.clear();
+
+    for (int i = 0; i <= stacks; ++i) {
+        float phi = glm::pi<float>() * float(i) / stacks;
+        for (int j = 0; j <= slices; ++j) {
+            float theta = 2.0f * glm::pi<float>() * float(j) / slices;
+            float x = radius * sin(phi) * cos(theta);
+            float y = radius * sin(phi) * sin(theta);
+            float z = radius * cos(phi);
+            vertices.push_back(x); vertices.push_back(y); vertices.push_back(z);
+        }
+    }
+
+    for (int i = 0; i < stacks; ++i) {
+        for (int j = 0; j < slices; ++j) {
+            int first = (i * (slices + 1)) + j;
+            int second = first + slices + 1;
+            indices.push_back(first); indices.push_back(second); indices.push_back(first + 1);
+            indices.push_back(second); indices.push_back(second + 1); indices.push_back(first + 1);
+        }
+    }
+}
+
+glm::vec3 calculateGravitationalField(glm::vec3 point) {
+    glm::vec3 totalField(0.0f);
+
+    for (const auto& mass : masses) {
+        glm::vec3 r = mass.position - point;
+        float distance = glm::length(r);
+
+        if (distance < mass.radius * 1.5f) continue;
+
+        const float G = 2.0f; // Scaled for visualization
+        float fieldMagnitude = G * mass.mass / (distance * distance);
+        glm::vec3 fieldDirection = glm::normalize(r);
+        totalField += fieldMagnitude * fieldDirection;
+    }
+
+    return totalField;
+}
+
+// Generate smooth field lines using RK4 integration
+void generateFieldLines() {
+    fieldLines.clear();
+    
+    const int numLines = 16;
+    const float startRadius = 6.0f;
+    const int maxSteps = 200;
+    const float stepSize = 0.02f;
+    
+    for (int i = 0; i < numLines; ++i) {
+        for (int j = 0; j < 8; ++j) {
+            float theta = (2.0f * glm::pi<float>() * i) / numLines;
+            float phi = (glm::pi<float>() * j) / 8.0f;
+            
+            glm::vec3 startPos(
+                startRadius * sin(phi) * cos(theta),
+                startRadius * cos(phi),
+                startRadius * sin(phi) * sin(theta)
+            );
+            
+            FieldLine line;
+            line.points.push_back(startPos);
+            
+            glm::vec3 currentPos = startPos;
+            
+            for (int step = 0; step < maxSteps; ++step) {
+                glm::vec3 field = calculateGravitationalField(currentPos);
+                
+                if (glm::length(field) < 0.01f) break;
+                
+                // Check if we're too close to any mass
+                bool tooClose = false;
+                for (const auto& mass : masses) {
+                    if (glm::length(currentPos - mass.position) < mass.radius * 1.2f) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (tooClose) break;
+                
+                // RK4 integration
+                glm::vec3 k1 = glm::normalize(field) * stepSize;
+                glm::vec3 k2 = glm::normalize(calculateGravitationalField(currentPos + k1 * 0.5f)) * stepSize;
+                glm::vec3 k3 = glm::normalize(calculateGravitationalField(currentPos + k2 * 0.5f)) * stepSize;
+                glm::vec3 k4 = glm::normalize(calculateGravitationalField(currentPos + k3)) * stepSize;
+                
+                currentPos += (k1 + 2.0f * k2 + 2.0f * k3 + k4) / 6.0f;
+                line.points.push_back(currentPos);
+            }
+            
+            if (line.points.size() > 5) {
+                line.intensity = glm::length(calculateGravitationalField(startPos));
+                line.color = glm::vec3(0.4f, 0.8f, 1.0f);
+                fieldLines.push_back(line);
+            }
+        }
+    }
+}
+
+// Update test particles
+void updateTestParticles(float deltaTime) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_real_distribution<> dis(-1.0, 1.0);
+    
+    // Spawn new particles occasionally
+    static float spawnTimer = 0.0f;
+    spawnTimer += deltaTime;
+    
+    if (spawnTimer > 0.1f && testParticles.size() < 50) {
+        spawnTimer = 0.0f;
+        
+        TestParticle particle;
+        // Spawn at random position on sphere
+        float theta = dis(gen) * glm::pi<float>();
+        float phi = dis(gen) * 2.0f * glm::pi<float>();
+        float radius = 6.0f + dis(gen) * 2.0f;
+        
+        particle.position = glm::vec3(
+            radius * sin(theta) * cos(phi),
+            radius * cos(theta),
+            radius * sin(theta) * sin(phi)
+        );
+        
+        particle.velocity = glm::vec3(0.0f);
+        particle.active = true;
+        particle.life = 1.0f;
+        testParticles.push_back(particle);
+    }
+    
+    // Update existing particles
+    for (auto& particle : testParticles) {
+        if (!particle.active) continue;
+        
+        // Calculate gravitational acceleration
+        glm::vec3 acceleration = calculateGravitationalField(particle.position);
+        
+        // Update velocity and position
+        particle.velocity += acceleration * deltaTime;
+        particle.position += particle.velocity * deltaTime;
+        
+        // Add to trail
+        particle.trail.push_back(particle.position);
+        if (particle.trail.size() > 20) {
+            particle.trail.erase(particle.trail.begin());
+        }
+        
+        // Check if particle is too close to mass or too far
+        bool deactivate = false;
+        for (const auto& mass : masses) {
+            if (glm::length(particle.position - mass.position) < mass.radius * 1.1f) {
+                deactivate = true;
+                break;
+            }
+        }
+        
+        if (glm::length(particle.position) > 15.0f) {
+            deactivate = true;
+        }
+        
+        // Update life
+        particle.life -= deltaTime * 0.2f;
+        if (particle.life <= 0.0f || deactivate) {
+            particle.active = false;
+        }
+    }
+    
+    // Remove inactive particles
+    testParticles.erase(
+        std::remove_if(testParticles.begin(), testParticles.end(),
+            [](const TestParticle& p) { return !p.active; }),
+        testParticles.end()
+    );
+}
+
+void processInput(GLFWwindow* window) {
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+
+    static bool cPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
+        if (!cPressed) {
+            freeCameraMode = !freeCameraMode;
+            autoRotate = false;
+            cPressed = true;
+        }
+    }
+    else {
+        cPressed = false;
+    }
+
+    static bool spacePressed = false;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        if (!spacePressed) {
+            if (!freeCameraMode) {
+                autoRotate = !autoRotate;
+            }
+            spacePressed = true;
+        }
+    }
+    else {
+        spacePressed = false;
+    }
+    
+    static bool tPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS) {
+        if (!tPressed) {
+            showTestParticles = !showTestParticles;
+            tPressed = true;
+        }
+    }
+    else {
+        tPressed = false;
+    }
+    
+    static bool fPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
+        if (!fPressed) {
+            showFieldLines = !showFieldLines;
+            fPressed = true;
+        }
+    }
+    else {
+        fPressed = false;
+    }
+
+    float speed = 0.03f;
+
+    if (freeCameraMode) {
+        glm::vec3 front, right, up;
+        front.x = cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+        front.y = sin(glm::radians(cameraPitch));
+        front.z = sin(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+        front = glm::normalize(front);
+        right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
+        up = glm::normalize(glm::cross(right, front));
+
+        float cameraSpeed = 0.1f;
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            cameraPos += cameraSpeed * front;
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            cameraPos -= cameraSpeed * front;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            cameraPos -= cameraSpeed * right;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            cameraPos += cameraSpeed * right;
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+            cameraPos -= cameraSpeed * up;
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+            cameraPos += cameraSpeed * up;
+
+        if (!masses.empty()) {
+            if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+                masses[0].position.z -= speed;
+            if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+                masses[0].position.z += speed;
+            if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+                masses[0].position.x -= speed;
+            if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+                masses[0].position.x += speed;
+        }
+    }
+    else {
+        if (!masses.empty()) {
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+                masses[0].position.z -= speed;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+                masses[0].position.z += speed;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+                masses[0].position.x -= speed;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+                masses[0].position.x += speed;
+            if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+                masses[0].position.y += speed;
+            if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+                masses[0].position.y -= speed;
+        }
+
+        float cameraSpeed = 1.0f;
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraPitch += cameraSpeed;
+            if (cameraPitch > 89.0f) cameraPitch = 89.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraPitch -= cameraSpeed;
+            if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraYaw -= cameraSpeed;
+        }
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+            autoRotate = false;
+            cameraYaw += cameraSpeed;
+        }
+    }
+}
+
+void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
+    if (mouseButtonPressed) {
+        autoRotate = false;
+        double xoffset = xpos - lastMouseX;
+        double yoffset = lastMouseY - ypos;
+        lastMouseX = xpos;
+        lastMouseY = ypos;
+        float sensitivity = 0.1f;
+        cameraYaw += static_cast<float>(xoffset * sensitivity);
+        cameraPitch += static_cast<float>(yoffset * sensitivity);
+        if (cameraPitch > 89.0f) cameraPitch = 89.0f;
+        if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+    }
+}
+
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == GLFW_PRESS) {
+            mouseButtonPressed = true;
+            glfwGetCursorPos(window, &lastMouseX, &lastMouseY);
+        }
+        else if (action == GLFW_RELEASE) {
+            mouseButtonPressed = false;
+        }
+    }
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+    if (!freeCameraMode) {
+        cameraDistance -= yoffset * 0.8;
+        if (cameraDistance < 3.0) cameraDistance = 3.0;
+        if (cameraDistance > 25.0) cameraDistance = 25.0;
+    }
+}
+
+int main() {
+    // Initialize GLFW
+    if (!glfwInit()) {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
+        return -1;
+    }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_SAMPLES, 4); // Enable 4x MSAA
+
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Enhanced Gravitational Field Visualization", NULL, NULL);
+    if (window == NULL) {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
+
+    glfwMakeContextCurrent(window);
+    glfwSetCursorPosCallback(window, mouseCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetScrollCallback(window, scrollCallback);
+
+    // Initialize GLEW
+    if (glewInit() != GLEW_OK) {
+        std::cerr << "Failed to initialize GLEW" << std::endl;
+        return -1;
+    }
+
+    // Enable features
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_MULTISAMPLE);
+    glEnable(GL_PROGRAM_POINT_SIZE);
+
+    // Initialize text rendering
+    if (!initTextRendering()) {
+        std::cerr << "Failed to initialize text rendering" << std::endl;
+        return -1;
+    }
+
+    // Create shader programs
+    GLuint lineShader = createShaderProgram(vertexShaderSource, fragmentShaderSource);
+    GLuint sphereShader = createShaderProgram(sphereVertexShaderSource, sphereFragmentShaderSource);
+    GLuint particleShader = createShaderProgram(particleVertexShaderSource, particleFragmentShaderSource);
+    GLuint textShader = createShaderProgram(textVertexShaderSource, textFragmentShaderSource);
+
+    if (lineShader == 0 || sphereShader == 0 || particleShader == 0 || textShader == 0) {
+        std::cerr << "Failed to create shader programs" << std::endl;
+        return -1;
+    }
+
+    // Initialize masses - Multiple masses for interesting field patterns
+    masses.push_back(Mass(glm::vec3(0.0f, 0.0f, 0.0f), 8.0f, glm::vec3(0.2f, 0.5f, 1.0f)));
+    masses.push_back(Mass(glm::vec3(3.0f, 1.0f, 0.0f), 3.0f, glm::vec3(1.0f, 0.3f, 0.2f)));
+
+    // Generate sphere geometry
+    std::vector<float> sphereVertices;
+    std::vector<unsigned int> sphereIndices;
+    generateSphere(sphereVertices, sphereIndices, 1.0f, 32, 24);
+
+    // Create sphere VAO and buffers
+    unsigned int sphereVAO, sphereVBO, sphereEBO;
+    glGenVertexArrays(1, &sphereVAO);
+    glGenBuffers(1, &sphereVBO);
+    glGenBuffers(1, &sphereEBO);
+
+    glBindVertexArray(sphereVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float), sphereVertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int), sphereIndices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Create line VAO for field lines
+    unsigned int lineVAO, lineVBO;
+    glGenVertexArrays(1, &lineVAO);
+    glGenBuffers(1, &lineVBO);
+    glBindVertexArray(lineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Create particle VAO
+    unsigned int particleVAO, particleVBO;
+    glGenVertexArrays(1, &particleVAO);
+    glGenBuffers(1, &particleVBO);
+    glBindVertexArray(particleVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Generate initial field lines
+    generateFieldLines();
+
+    float lastTime = 0.0f;
+
+    // Main render loop
+    while (!glfwWindowShouldClose(window)) {
+        float currentTime = static_cast<float>(glfwGetTime());
+        float deltaTime = currentTime - lastTime;
+        lastTime = currentTime;
+        
+        processInput(window);
+
+        // Update simulation time
+        simulationTime += deltaTime;
+
+        // Regenerate field lines periodically or when mass moves
+        static float fieldLineTimer = 0.0f;
+        fieldLineTimer += deltaTime;
+        if (fieldLineTimer > 0.5f) {
+            generateFieldLines();
+            fieldLineTimer = 0.0f;
+        }
+
+        // Update test particles
+        if (showTestParticles) {
+            updateTestParticles(deltaTime);
+        }
+
+        // Update camera
+        if (freeCameraMode) {
+            glm::vec3 front;
+            front.x = cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+            front.y = sin(glm::radians(cameraPitch));
+            front.z = sin(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch));
+            front = glm::normalize(front);
+            view = glm::lookAt(cameraPos, cameraPos + front, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+        else {
+            if (autoRotate) {
+                cameraYaw += 15.0f * deltaTime;
+            }
+            cameraPos.x = static_cast<float>(cameraDistance * cos(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch)));
+            cameraPos.y = static_cast<float>(cameraDistance * sin(glm::radians(cameraPitch)));
+            cameraPos.z = static_cast<float>(cameraDistance * sin(glm::radians(cameraYaw)) * cos(glm::radians(cameraPitch)));
+            view = glm::lookAt(cameraPos, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 100.0f);
+
+        // Clear screen with dark background
+        glClearColor(0.01f, 0.02f, 0.05f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Render field lines
+        if (showFieldLines) {
+            glUseProgram(lineShader);
+            glm::mat4 mvp = projection * view;
+            glUniformMatrix4fv(glGetUniformLocation(lineShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+
+            glBindVertexArray(lineVAO);
+
+            for (const auto& line : fieldLines) {
+                if (line.points.size() < 2) continue;
+
+                // Upload line data
+                glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+                glBufferData(GL_ARRAY_BUFFER, line.points.size() * 3 * sizeof(float), 
+                           line.points.data(), GL_DYNAMIC_DRAW);
+
+                // Color based on intensity with subtle glow
+                float intensity = glm::min(line.intensity * 0.3f, 1.0f);
+                glUniform3f(glGetUniformLocation(lineShader, "color"),
+                    line.color.x * intensity,
+                    line.color.y * intensity,
+                    line.color.z * intensity);
+                glUniform1f(glGetUniformLocation(lineShader, "alpha"), 0.6f + intensity * 0.4f);
+
+                glDrawArrays(GL_LINE_STRIP, 0, static_cast<GLsizei>(line.points.size()));
+            }
+        }
+
+        // Render test particles and trails
+        if (showTestParticles) {
+            glUseProgram(particleShader);
+            glm::mat4 mvp = projection * view;
+            glUniformMatrix4fv(glGetUniformLocation(particleShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+
+            glBindVertexArray(particleVAO);
+
+            // Render particle trails
+            glUseProgram(lineShader);
+            glUniformMatrix4fv(glGetUniformLocation(lineShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+            glBindVertexArray(lineVAO);
+
+            for (const auto& particle : testParticles) {
+                if (!particle.active || particle.trail.size() < 2) continue;
+
+                glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+                glBufferData(GL_ARRAY_BUFFER, particle.trail.size() * 3 * sizeof(float), 
+                           particle.trail.data(), GL_DYNAMIC_DRAW);
+
+                glUniform3f(glGetUniformLocation(lineShader, "color"), 
+                    particle.color.x, particle.color.y, particle.color.z);
+                glUniform1f(glGetUniformLocation(lineShader, "alpha"), particle.life * 0.4f);
+
+                glDrawArrays(GL_LINE_STRIP, 0, static_cast<GLsizei>(particle.trail.size()));
+            }
+
+            // Render particles as points
+            glUseProgram(particleShader);
+            glUniformMatrix4fv(glGetUniformLocation(particleShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+            glBindVertexArray(particleVAO);
+
+            for (const auto& particle : testParticles) {
+                if (!particle.active) continue;
+
+                glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
+                glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float), &particle.position.x, GL_DYNAMIC_DRAW);
+
+                glUniform3f(glGetUniformLocation(particleShader, "color"), 
+                    particle.color.x, particle.color.y, particle.color.z);
+                glUniform1f(glGetUniformLocation(particleShader, "alpha"), particle.life);
+                glUniform1f(glGetUniformLocation(particleShader, "pointSize"), 8.0f * particle.life);
+
+                glDrawArrays(GL_POINTS, 0, 1);
+            }
+        }
+
+        // Render masses
+        glUseProgram(sphereShader);
+        glUniform3f(glGetUniformLocation(sphereShader, "lightPos"), 10.0f, 10.0f, 10.0f);
+        glUniform3f(glGetUniformLocation(sphereShader, "viewPos"), cameraPos.x, cameraPos.y, cameraPos.z);
+        glUniform1f(glGetUniformLocation(sphereShader, "time"), simulationTime);
+
+        glBindVertexArray(sphereVAO);
+
+        for (const auto& mass : masses) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, mass.position);
+            model = glm::scale(model, glm::vec3(mass.radius));
+
+            glm::mat4 mvp = projection * view * model;
+            glUniformMatrix4fv(glGetUniformLocation(sphereShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+            glUniformMatrix4fv(glGetUniformLocation(sphereShader, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glUniform3f(glGetUniformLocation(sphereShader, "massColor"),
+                mass.color.x, mass.color.y, mass.color.z);
+
+            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(sphereIndices.size()), GL_UNSIGNED_INT, 0);
+        }
+
+        // Render UI
+        glDisable(GL_DEPTH_TEST);
+
+        // Instructions
+        std::string instructions = "Enhanced Gravity Field Visualization\n";
+        instructions += "Controls:\n";
+        instructions += freeCameraMode ? "WASD/QE: Move camera\n" : "WASD/QE: Move mass\n";
+        instructions += freeCameraMode ? "Arrow keys: Move mass" : "Arrow keys: Rotate camera";
+        instructions += "\nC: Toggle camera mode";
+        instructions += "\nSpace: " + std::string(freeCameraMode ? "N/A" : (autoRotate ? "Stop rotation" : "Auto rotate"));
+        instructions += "\nT: Toggle test particles (" + std::string(showTestParticles ? "ON" : "OFF") + ")";
+        instructions += "\nF: Toggle field lines (" + std::string(showFieldLines ? "ON" : "OFF") + ")";
+        instructions += "\nMouse: Look around | Scroll: Zoom";
+
+        renderText(textShader, instructions, 20, HEIGHT - 50, 0.45f, glm::vec3(0.7f, 0.8f, 0.9f));
+
+        // Status
+        std::stringstream status;
+        status << "Mode: " << (freeCameraMode ? "FREE CAMERA" : "ORBIT");
+        if (!freeCameraMode) {
+            status << " (" << (autoRotate ? "AUTO" : "MANUAL") << ")";
+        }
+        status << "\nParticles: " << testParticles.size();
+        status << " | Field Lines: " << fieldLines.size();
+
+        renderText(textShader, status.str(), 20, 60, 0.5f, glm::vec3(0.3f, 0.9f, 0.3f));
+
+        glEnable(GL_DEPTH_TEST);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    // Cleanup
+    glDeleteVertexArrays(1, &sphereVAO);
+    glDeleteBuffers(1, &sphereVBO);
+    glDeleteBuffers(1, &sphereEBO);
+    glDeleteVertexArrays(1, &lineVAO);
+    glDeleteBuffers(1, &lineVBO);
+    glDeleteVertexArrays(1, &particleVAO);
+    glDeleteBuffers(1, &particleVBO);
+    glDeleteVertexArrays(1, &textVAO);
+    glDeleteBuffers(1, &textVBO);
+    glDeleteTextures(1, &fontTexture);
+    glDeleteProgram(lineShader);
+    glDeleteProgram(sphereShader);
+    glDeleteProgram(particleShader);
+    glDeleteProgram(textShader);
+
+    glfwTerminate();
+    return 0;
+}

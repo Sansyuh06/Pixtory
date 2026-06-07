@@ -1,0 +1,980 @@
+import pygame
+import math
+import random
+import numpy as np
+
+# Initialize Pygame
+pygame.init()
+
+# Screen dimensions
+WIDTH, HEIGHT = 1200, 800
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("GARGANTUA - Realistic Stellar Tidal Disruption Event")
+
+# Colors
+SPACE_BLACK = (2, 5, 15)
+WHITE = (255, 255, 255)
+
+# Fonts
+try:
+    font = pygame.font.Font(None, 16)
+    title_font = pygame.font.Font(None, 28)
+    small_font = pygame.font.Font(None, 12)
+except:
+    font = pygame.font.SysFont('Arial', 16)
+    title_font = pygame.font.SysFont('Arial', 28)
+    small_font = pygame.font.SysFont('Arial', 12)
+
+# Physical constants (realistic values in simulation units)
+G = 6.67430e-11  # Gravitational constant
+c = 299792458    # Speed of light
+M_sun = 1.989e30 # Solar mass
+R_sun = 6.96e8   # Solar radius
+AU = 1.496e11    # Astronomical unit
+
+# Black hole properties (4.1 million solar masses like Sgr A*)
+BH_MASS = 4.1e6 * M_sun
+BH_MASS_SIM = 1000  # Simulation units
+SCHWARZSCHILD_RADIUS = (2 * G * BH_MASS) / (c * c) / AU  # in AU
+EVENT_HORIZON_RADIUS = 40   # pixels
+PHOTON_SPHERE_RADIUS = EVENT_HORIZON_RADIUS * 1.5
+ISCO_RADIUS = EVENT_HORIZON_RADIUS * 3
+SCALE_FACTOR = EVENT_HORIZON_RADIUS / SCHWARZSCHILD_RADIUS  # pixels per AU
+
+# Camera system
+camera_distance = 600
+camera_rot = [0.2, 0.0]
+zoom = 1.0
+time_factor = 0
+simulation_speed = 1.0
+
+# Simulation state
+simulation_phase = 0
+total_simulation_time = 0
+disruption_started = False
+time_dilation_factor = 1.0
+
+# Performance optimization caches
+_color_cache = {}
+_projection_cache = {}
+_background_stars = None
+_ui_surfaces = {}
+
+def clamp_color(r, g, b):
+    """Ensure RGB values are within valid range"""
+    return (max(0, min(255, int(r))), max(0, min(255, int(g))), max(0, min(255, int(b))))
+
+def blackbody_color(temperature):
+    """Calculate realistic blackbody color from temperature with caching"""
+    temp_key = int(temperature // 100) * 100  # Cache in 100K intervals
+    
+    if temp_key in _color_cache:
+        return _color_cache[temp_key]
+    
+    # Simplified blackbody radiation color calculation
+    t = max(1000, min(40000, temperature))
+    
+    if t < 3500:
+        r = 255
+        g = max(0, min(255, -40 + 0.22 * t))
+        b = 0
+    elif t < 5000:
+        r = 255
+        g = max(0, min(255, 99 + 0.029 * t))
+        b = max(0, min(255, -265 + 0.07 * t))
+    elif t < 6600:
+        r = max(0, min(255, 351 - 0.014 * t))
+        g = max(0, min(255, 241 + 0.006 * t))
+        b = 255
+    else:
+        r = max(0, min(255, 650 - 0.04 * t))
+        g = max(0, min(255, 580 - 0.015 * t))
+        b = 255
+    
+    color = (int(r), int(g), int(b))
+    _color_cache[temp_key] = color
+    return color
+
+def gravitational_redshift(z_grav, original_color):
+    """Apply gravitational redshift to color - simplified"""
+    if z_grav < 0.01:  # Skip calculation for minimal redshift
+        return original_color
+    
+    redshift_factor = 1.0 + z_grav * 0.5  # Simplified calculation
+    r, g, b = original_color
+    
+    # Shift colors toward red
+    new_r = min(255, int(r * redshift_factor))
+    new_g = max(0, int(g / (1 + z_grav * 0.3)))
+    new_b = max(0, int(b / (1 + z_grav * 0.5)))
+    
+    return (new_r, new_g, new_b)
+
+def project_3d(x, y, z):
+    """Optimized 3D to 2D projection"""
+    try:
+        # Simple rotation without trig recalculation
+        cos_rx, sin_rx = 0.98, 0.196  # Approximate values for camera_rot[0] = 0.2
+        cos_ry, sin_ry = math.cos(camera_rot[1]), math.sin(camera_rot[1])
+        
+        # Rotate around Y axis
+        x_rot = x * cos_ry - z * sin_ry
+        z_rot = x * sin_ry + z * cos_ry
+        
+        # Rotate around X axis  
+        y_rot = y * cos_rx - z_rot * sin_rx
+        z_cam = y * sin_rx + z_rot * cos_rx + camera_distance
+        
+        if z_cam <= 1:
+            return None
+        
+        # Simplified gravitational redshift calculation
+        r_total = math.sqrt(x*x + y*y + z*z)
+        if r_total > EVENT_HORIZON_RADIUS:
+            z_grav = min(2.0, (SCHWARZSCHILD_RADIUS * SCALE_FACTOR) / (4 * r_total))
+        else:
+            z_grav = 5.0  # Extreme redshift near event horizon
+        
+        # Perspective projection
+        scale = (300 * zoom) / z_cam
+        screen_x = WIDTH // 2 + x_rot * scale
+        screen_y = HEIGHT // 2 - y_rot * scale
+        
+        return (int(screen_x), int(screen_y), scale, z_cam, z_grav)
+    except:
+        return None
+
+def draw_black_hole():
+    """Optimized black hole rendering"""
+    center_x, center_y = WIDTH // 2, HEIGHT // 2
+    
+    # Event horizon (perfectly black)
+    shadow_radius = max(15, int(EVENT_HORIZON_RADIUS * zoom * 300 / max(camera_distance, 100)))
+    pygame.draw.circle(screen, (0, 0, 0), (center_x, center_y), shadow_radius)
+    
+    # Simplified photon sphere effect
+    photon_radius = int(shadow_radius * 1.5)
+    for i in range(3):  # Reduced from 5
+        radius = photon_radius + i * 4
+        intensity = 0.3 * (3 - i) / 3
+        color = clamp_color(255 * intensity, 200 * intensity, 100 * intensity)
+        if radius > shadow_radius:
+            pygame.draw.circle(screen, color, (center_x, center_y), radius, 2)
+    
+    # Simplified ISCO glow
+    isco_radius = int(shadow_radius * 3)
+    isco_pulse = 0.7 + 0.3 * math.sin(time_factor * 1.2)
+    
+    for i in range(4, 0, -1):  # Reduced from 8
+        radius = isco_radius + i * 2
+        intensity = (0.2 / i) * isco_pulse
+        color = clamp_color(200 * intensity, 220 * intensity, 255 * intensity)
+        
+        if radius > photon_radius:
+            pygame.draw.circle(screen, color, (center_x, center_y), radius, 1)
+    
+    return shadow_radius
+
+def draw_particle_optimized(pos, color, size, temperature=6000):
+    """Optimized particle rendering"""
+    try:
+        if len(pos) >= 5:
+            px, py, scale, z_dist, z_grav = pos[:5]
+        else:
+            px, py = pos[0], pos[1]
+            z_grav = 0
+            
+        if not (0 <= px < WIDTH and 0 <= py < HEIGHT):
+            return
+        
+        # Apply redshift only if significant
+        if z_grav > 0.1:
+            final_color = gravitational_redshift(z_grav, color)
+        else:
+            final_color = color
+        
+        # Draw main particle
+        if size >= 1:
+            pygame.draw.circle(screen, final_color, (px, py), max(1, int(size)))
+        
+        # Simplified glow for hot particles
+        if temperature > 15000 and size > 2:
+            glow_size = int(size * 1.5)
+            glow_color = clamp_color(
+                final_color[0] * 0.3,
+                final_color[1] * 0.3,
+                final_color[2] * 0.3
+            )
+            pygame.draw.circle(screen, glow_color, (px, py), glow_size, 1)
+    except:
+        pass
+
+class RealisticStar:
+    """Optimized realistic star"""
+    
+    def __init__(self, initial_distance=800):
+        # Orbital properties
+        self.distance = initial_distance
+        self.angle = random.uniform(0, 2 * math.pi)
+        self.orbital_velocity = 0
+        self.height = random.uniform(-10, 10)
+        
+        # Physical properties
+        self.mass = random.uniform(0.5, 2.0) * M_sun
+        self.mass_sim = self.mass / M_sun
+        self.radius = R_sun * (self.mass / M_sun) ** 0.8
+        self.radius_sim = self.radius / AU * SCALE_FACTOR
+        self.original_radius_sim = self.radius_sim
+        self.temperature = 5778 * (self.mass / M_sun) ** 0.5
+        self.luminosity = 3.828e26 * (self.mass / M_sun) ** 3.5
+        
+        # Tidal disruption properties
+        self.is_disrupted = False
+        self.disruption_progress = 0.0
+        self.tidal_radius = self.calculate_tidal_radius()
+        self.roche_limit = self.calculate_roche_limit()
+        self.current_brightness = 1.0
+        
+        # Optimized debris tracking
+        self.debris_particles = []
+        self.total_disrupted_mass = 0
+        self.time_dilation = 1.0
+        self.proper_time = 0
+        
+        # Cache frequently used values
+        self._cached_color = None
+        self._last_temp = 0
+        
+    def calculate_tidal_radius(self):
+        """Calculate realistic tidal disruption radius"""
+        return self.radius * ((BH_MASS / self.mass) ** (1/3))
+    
+    def calculate_roche_limit(self):
+        """Calculate Roche limit for tidal disruption"""
+        roche = 2.44 * self.radius * ((BH_MASS / self.mass) ** (1/3))
+        return roche / AU * SCALE_FACTOR
+    
+    def calculate_color(self):
+        """Calculate stellar color with caching"""
+        if abs(self.temperature - self._last_temp) > 500 or self._cached_color is None:
+            self._cached_color = blackbody_color(self.temperature)
+            self._last_temp = self.temperature
+        return self._cached_color
+    
+    def calculate_tidal_force(self):
+        """Simplified tidal force calculation"""
+        if self.distance <= EVENT_HORIZON_RADIUS:
+            return 100.0
+        
+        # Simplified tidal force
+        distance_factor = (ISCO_RADIUS / max(self.distance, 1)) ** 3
+        return distance_factor * 10
+    
+    def update_orbital_motion(self, dt):
+        """Optimized orbital mechanics"""
+        if self.distance > EVENT_HORIZON_RADIUS:
+            try:
+                # Simplified orbital velocity
+                self.orbital_velocity = math.sqrt(BH_MASS_SIM / max(self.distance, 1))
+                
+                # Angular velocity
+                angular_velocity = self.orbital_velocity / self.distance
+                self.angle += angular_velocity * dt * self.time_dilation
+                
+                # Orbital decay
+                if self.distance < self.roche_limit * 3:
+                    decay_rate = 30 / max(self.distance, EVENT_HORIZON_RADIUS * 2)
+                    self.distance = max(EVENT_HORIZON_RADIUS, self.distance - decay_rate * dt)
+                else:
+                    decay_rate = 3 / max(self.distance, EVENT_HORIZON_RADIUS * 2)
+                    self.distance = max(EVENT_HORIZON_RADIUS, self.distance - decay_rate * dt)
+                    
+            except (ZeroDivisionError, ValueError):
+                pass
+    
+    def update_tidal_disruption(self, dt):
+        """Optimized tidal disruption"""
+        global disruption_started
+        
+        # Simplified time dilation
+        if self.distance > EVENT_HORIZON_RADIUS * 2:
+            self.time_dilation = max(0.1, 1.0 - (EVENT_HORIZON_RADIUS * 2) / self.distance)
+        else:
+            self.time_dilation = 0.1
+        
+        self.tidal_strength = self.calculate_tidal_force()
+        
+        # Start disruption
+        if self.distance < self.roche_limit and not self.is_disrupted:
+            self.is_disrupted = True
+            disruption_started = True
+        
+        if self.is_disrupted:
+            # Faster disruption rate
+            disruption_rate = min(8.0, self.tidal_strength * 0.1)
+            self.disruption_progress = min(1.0, self.disruption_progress + disruption_rate * dt)
+            
+            # Tidal stretching
+            stretch_factor = 1.0 + self.disruption_progress ** 2 * 5.0
+            self.radius_sim = self.original_radius_sim * stretch_factor
+            
+            # Create debris less frequently for performance
+            if random.random() < disruption_rate * dt * 8 and len(self.debris_particles) < 150:
+                self.create_debris()
+            
+            # Heating
+            self.temperature = min(30000, self.temperature * (1.0 + 0.002 * dt))
+            self.current_brightness = min(5.0, 1.0 + self.disruption_progress * 2)
+    
+    def create_debris(self):
+        """Optimized debris creation"""
+        try:
+            star_x = self.distance * math.cos(self.angle)
+            star_y = self.height
+            star_z = self.distance * math.sin(self.angle)
+            
+            # Simplified debris positioning
+            stream_direction = 1 if random.random() > 0.5 else -1
+            stream_offset = random.uniform(0, self.radius_sim) * stream_direction
+            
+            x = star_x + stream_offset
+            y = star_y + random.uniform(-self.radius_sim/3, self.radius_sim/3)
+            z = star_z + stream_offset
+            
+            # Simplified velocity
+            orbital_v = self.orbital_velocity
+            tidal_kick = random.uniform(5, 25) * stream_direction
+            
+            vx = -orbital_v * math.sin(self.angle) + tidal_kick
+            vy = random.uniform(-3, 3)
+            vz = orbital_v * math.cos(self.angle) + tidal_kick
+            
+            debris_mass = random.uniform(1e-6, 1e-4) * self.mass_sim
+            self.total_disrupted_mass += debris_mass
+            
+            particle = {
+                'x': x, 'y': y, 'z': z,
+                'vx': vx, 'vy': vy, 'vz': vz,
+                'mass': debris_mass,
+                'temperature': self.temperature * random.uniform(0.9, 1.2),
+                'age': 0,
+                'lifetime': random.uniform(15, 60),
+                'brightness': random.uniform(1.2, 3.0),
+                'size': max(1, math.sqrt(debris_mass * 800))
+            }
+            
+            self.debris_particles.append(particle)
+        except:
+            pass
+    
+    def update_debris(self, dt):
+        """Optimized debris physics"""
+        active_particles = []
+        
+        for p in self.debris_particles:
+            try:
+                p['age'] += dt
+                
+                if p['age'] < p['lifetime']:
+                    r = math.sqrt(p['x']**2 + p['y']**2 + p['z']**2)
+                    
+                    if r > EVENT_HORIZON_RADIUS:
+                        # Simplified gravity
+                        accel = BH_MASS_SIM * 0.8 / max(r**2, 100)
+                        
+                        ax = -accel * p['x'] / max(r, 1)
+                        ay = -accel * p['y'] / max(r, 1) * 0.1
+                        az = -accel * p['z'] / max(r, 1)
+                        
+                        # Update with velocity limits
+                        max_v = 50  # Reasonable limit
+                        p['vx'] = max(-max_v, min(max_v, p['vx'] + ax * dt))
+                        p['vy'] = max(-max_v, min(max_v, p['vy'] + ay * dt))
+                        p['vz'] = max(-max_v, min(max_v, p['vz'] + az * dt))
+                        
+                        # Update positions
+                        p['x'] += p['vx'] * dt
+                        p['y'] += p['vy'] * dt
+                        p['z'] += p['vz'] * dt
+                        
+                        # Simplified heating near ISCO
+                        if r < ISCO_RADIUS * 2:
+                            p['temperature'] = min(50000, p['temperature'] * (1 + 0.005 * dt))
+                            p['brightness'] = min(8.0, p['brightness'] * (1 + 0.003 * dt))
+                        
+                        active_particles.append(p)
+            except:
+                continue
+        
+        self.debris_particles = active_particles
+    
+    def update(self, dt):
+        """Update all star physics"""
+        self.proper_time += dt * self.time_dilation
+        
+        self.update_orbital_motion(dt)
+        self.update_tidal_disruption(dt)
+        self.update_debris(dt)
+        
+        return self.distance > EVENT_HORIZON_RADIUS * 1.02
+    
+    def get_position(self):
+        """Get star's 3D position"""
+        x = self.distance * math.cos(self.angle)
+        y = self.height
+        z = self.distance * math.sin(self.angle)
+        return (x, y, z)
+    
+    def draw(self):
+        """Optimized star rendering"""
+        base_color = self.calculate_color()
+        
+        # Draw main star
+        if self.disruption_progress < 0.9:
+            pos = self.get_position()
+            proj = project_3d(*pos)
+            
+            if proj and 0 <= proj[0] < WIDTH and 0 <= proj[1] < HEIGHT:
+                px, py, scale, z_dist, z_grav = proj
+                
+                size = max(2, self.radius_sim * scale * 0.1)
+                brightness = self.current_brightness * 300 / max(z_dist, 1)
+                brightness = min(3.0, brightness)
+                
+                final_color = clamp_color(
+                    base_color[0] * brightness,
+                    base_color[1] * brightness,
+                    base_color[2] * brightness
+                )
+                
+                draw_particle_optimized(proj, final_color, size, self.temperature)
+                
+                # Simplified tidal stretching
+                if self.is_disrupted and self.disruption_progress > 0.4:
+                    stretch_length = int(size * self.disruption_progress * 2)
+                    tidal_direction = math.atan2(-pos[2], -pos[0])
+                    
+                    for i in range(-stretch_length//2, stretch_length//2 + 1, 3):
+                        stretch_x = px + i * math.cos(tidal_direction)
+                        stretch_y = py + i * math.sin(tidal_direction)
+                        
+                        if 0 <= stretch_x < WIDTH and 0 <= stretch_y < HEIGHT:
+                            stretch_size = max(1, size * 0.7)
+                            stretch_color = clamp_color(
+                                final_color[0] * 0.6,
+                                final_color[1] * 0.6,
+                                final_color[2] * 0.6
+                            )
+                            proj_stretch = (int(stretch_x), int(stretch_y), scale, z_dist, z_grav)
+                            draw_particle_optimized(proj_stretch, stretch_color, stretch_size, self.temperature)
+        
+        # Draw debris with level-of-detail
+        debris_count = 0
+        max_debris_render = 100  # Limit rendered debris
+        
+        for particle in self.debris_particles:
+            if debris_count >= max_debris_render:
+                break
+                
+            proj = project_3d(particle['x'], particle['y'], particle['z'])
+            
+            if proj and 0 <= proj[0] < WIDTH and 0 <= proj[1] < HEIGHT:
+                age_factor = max(0.1, 1.0 - (particle['age'] / max(particle['lifetime'], 1)))
+                size = max(1, particle['size'] * proj[2] * 0.04 * age_factor)
+                
+                # Skip very small particles for performance
+                if size < 1.5:
+                    continue
+                
+                color = blackbody_color(particle['temperature'])
+                brightness = particle['brightness'] * age_factor * 200 / max(proj[3], 1)
+                brightness = min(4.0, brightness)
+                
+                final_color = clamp_color(
+                    color[0] * brightness,
+                    color[1] * brightness,
+                    color[2] * brightness
+                )
+                
+                draw_particle_optimized(proj, final_color, size, particle['temperature'])
+                debris_count += 1
+
+class RealisticAccretionDisk:
+    """Optimized accretion disk"""
+    
+    def __init__(self):
+        self.particles = []
+        self.total_mass = 0
+        self.initialize_base_disk()
+    
+    def initialize_base_disk(self):
+        """Initialize smaller base disk"""
+        for radius in range(ISCO_RADIUS, ISCO_RADIUS * 4, 20):  # Fewer radii
+            num_particles = max(4, int(radius * 0.04))  # Fewer particles
+            
+            temperature = 15000 * (ISCO_RADIUS / max(radius, 1)) ** 0.75
+            
+            for i in range(num_particles):
+                angle = (2 * math.pi * i / num_particles) + random.uniform(-0.1, 0.1)
+                actual_radius = radius + random.uniform(-5, 5)
+                
+                x = actual_radius * math.cos(angle)
+                z = actual_radius * math.sin(angle)
+                
+                scale_height = 1.5 * (actual_radius / ISCO_RADIUS) ** 1.1
+                y = random.gauss(0, scale_height)
+                
+                v_kepler = math.sqrt(BH_MASS_SIM * 0.5 / max(actual_radius, 1))
+                
+                particle = {
+                    'x': x, 'y': y, 'z': z,
+                    'vx': -v_kepler * math.sin(angle) * 0.95,
+                    'vy': 0,
+                    'vz': v_kepler * math.cos(angle) * 0.95,
+                    'mass': random.uniform(0.01, 0.02),
+                    'temperature': temperature * random.uniform(0.9, 1.1),
+                    'age': 0,
+                    'lifetime': 300,
+                    'brightness': random.uniform(1.5, 3.0),
+                    'radius': actual_radius
+                }
+                
+                self.particles.append(particle)
+    
+    def add_stellar_debris(self, mass, position, velocity):
+        """Add debris with limits"""
+        if len(self.particles) > 300:  # Lower limit
+            return
+        
+        try:
+            x, y, z = position
+            vx, vy, vz = velocity
+            
+            r = math.sqrt(x*x + z*z)
+            disk_temp = 20000 * (ISCO_RADIUS / max(r, ISCO_RADIUS)) ** 0.75
+            
+            particle = {
+                'x': x + random.uniform(-3, 3),
+                'y': y * 0.2 + random.uniform(-1, 1),
+                'z': z + random.uniform(-3, 3),
+                'vx': vx * 0.8,
+                'vy': vy * 0.1,
+                'vz': vz * 0.8,
+                'mass': mass,
+                'temperature': max(disk_temp, 10000),
+                'age': 0,
+                'lifetime': random.uniform(40, 120),
+                'brightness': random.uniform(2.0, 5.0),
+                'radius': r
+            }
+            
+            self.particles.append(particle)
+            self.total_mass += mass
+        except:
+            pass
+    
+    def update(self, dt):
+        """Optimized disk update"""
+        active_particles = []
+        
+        for p in self.particles:
+            try:
+                p['age'] += dt
+                
+                if p['age'] < p['lifetime']:
+                    r = math.sqrt(p['x']**2 + p['y']**2 + p['z']**2)
+                    
+                    if r > EVENT_HORIZON_RADIUS:
+                        # Simplified physics
+                        accel = BH_MASS_SIM * 0.6 / max(r**2, 100)
+                        
+                        ax = -accel * p['x'] / max(r, 1)
+                        ay = -accel * p['y'] / max(r, 1) * 0.05  # Weak vertical
+                        az = -accel * p['z'] / max(r, 1)
+                        
+                        # Simplified viscous effects
+                        radial_r = math.sqrt(p['x']**2 + p['z']**2)
+                        if radial_r > 0:
+                            viscous_drag = 0.02 * dt
+                            p['vx'] *= (1 - viscous_drag)
+                            p['vz'] *= (1 - viscous_drag)
+                        
+                        # Update with limits
+                        max_v = 30
+                        p['vx'] = max(-max_v, min(max_v, p['vx'] + ax * dt))
+                        p['vy'] = max(-max_v, min(max_v, p['vy'] + ay * dt))
+                        p['vz'] = max(-max_v, min(max_v, p['vz'] + az * dt))
+                        
+                        p['x'] += p['vx'] * dt
+                        p['y'] += p['vy'] * dt * 0.95  # Disk settling
+                        p['z'] += p['vz'] * dt
+                        
+                        # Simplified heating
+                        if r < ISCO_RADIUS * 1.5:
+                            p['temperature'] = min(100000, p['temperature'] * (1 + 0.002 * dt))
+                        
+                        active_particles.append(p)
+            except:
+                continue
+        
+        self.particles = active_particles
+    
+    def draw(self):
+        """Optimized disk rendering with LOD"""
+        # Sort and limit particles
+        visible_particles = [p for p in self.particles if p['age'] < p['lifetime'] * 0.9]
+        visible_particles.sort(key=lambda p: p['x']**2 + p['y']**2 + p['z']**2, reverse=True)
+        
+        # Limit rendered particles
+        max_render = min(200, len(visible_particles))
+        
+        for i, p in enumerate(visible_particles[:max_render]):
+            proj = project_3d(p['x'], p['y'], p['z'])
+            
+            if proj and 0 <= proj[0] < WIDTH and 0 <= proj[1] < HEIGHT:
+                age_factor = max(0.2, 1.0 - (p['age'] / max(p['lifetime'], 1)))
+                size = max(1, math.sqrt(p['mass']) * proj[2] * 0.6 * age_factor)
+                
+                # Skip small distant particles
+                if size < 1.2 and i > max_render // 2:
+                    continue
+                
+                color = blackbody_color(p['temperature'])
+                brightness = p['brightness'] * age_factor * 400 / max(proj[3], 1)
+                brightness = min(6.0, brightness)
+                
+                final_color = clamp_color(
+                    color[0] * brightness,
+                    color[1] * brightness,
+                    color[2] * brightness
+                )
+                
+                draw_particle_optimized(proj, final_color, size, p['temperature'])
+
+def init_background_stars():
+    """Pre-calculate background stars"""
+    global _background_stars
+    if _background_stars is not None:
+        return
+    
+    _background_stars = []
+    random.seed(42)
+    
+    for _ in range(200):  # Reduced from 300
+        x = random.randint(0, WIDTH-1)
+        y = random.randint(0, HEIGHT-1)
+        
+        # Stellar properties
+        star_class = random.random()
+        if star_class < 0.76:
+            temperature = random.uniform(2300, 3800)
+            luminosity = random.uniform(0.01, 0.08)
+        elif star_class < 0.96:
+            temperature = random.uniform(3700, 6000)
+            luminosity = random.uniform(0.08, 1.5)
+        else:
+            temperature = random.uniform(7500, 30000)
+            luminosity = random.uniform(5.0, 100.0)
+        
+        distance_factor = random.uniform(0.2, 2.0)
+        apparent_brightness = luminosity / (distance_factor ** 2)
+        
+        color = blackbody_color(temperature)
+        
+        # Pre-calculate twinkle phase
+        twinkle_phase = x * 0.02 + y * 0.03
+        
+        size = 2 if apparent_brightness > 2.0 else 1
+        
+        _background_stars.append({
+            'x': x, 'y': y,
+            'color': color,
+            'brightness': min(1.0, apparent_brightness * 0.3),
+            'twinkle_phase': twinkle_phase,
+            'size': size
+        })
+
+def draw_optimized_background():
+    """Draw optimized background stars"""
+    if _background_stars is None:
+        init_background_stars()
+    
+    # Simple exclusion check
+    center_x, center_y = WIDTH // 2, HEIGHT // 2
+    exclusion_radius = EVENT_HORIZON_RADIUS * zoom * 300 / max(camera_distance, 100) * 4
+    
+    for star in _background_stars:
+        x, y = star['x'], star['y']
+        
+        # Quick distance check
+        if (x - center_x) ** 2 + (y - center_y) ** 2 <= exclusion_radius ** 2:
+            continue
+        
+        # Simplified twinkling
+        twinkle = 0.8 + 0.2 * math.sin(time_factor * 2 + star['twinkle_phase'])
+        brightness = star['brightness'] * twinkle
+        
+        if brightness > 0.2:
+            final_color = clamp_color(
+                star['color'][0] * brightness,
+                star['color'][1] * brightness,
+                star['color'][2] * brightness
+            )
+            
+            if any(final_color):
+                pygame.draw.circle(screen, final_color, (x, y), star['size'])
+
+def draw_optimized_ui(star_obj, disk_obj):
+    """Optimized UI with caching"""
+    try:
+        # Cache title if not exists
+        if 'title' not in _ui_surfaces:
+            title_text = "GARGANTUA - Realistic Tidal Disruption Event"
+            subtitle_text = "Supermassive Black Hole • 4.1M☉ • Schwarzschild Metric"
+            
+            _ui_surfaces['title'] = title_font.render(title_text, True, (255, 220, 120))
+            _ui_surfaces['subtitle'] = small_font.render(subtitle_text, True, (180, 180, 180))
+        
+        # Draw cached titles
+        title_rect = _ui_surfaces['title'].get_rect(center=(WIDTH//2, 25))
+        subtitle_rect = _ui_surfaces['subtitle'].get_rect(center=(WIDTH//2, 45))
+        screen.blit(_ui_surfaces['title'], title_rect)
+        screen.blit(_ui_surfaces['subtitle'], subtitle_rect)
+        
+        # Dynamic data
+        phase_names = ["APPROACH", "DISRUPTION", "ACCRETION", "POST-DISRUPTION"]
+        current_phase = min(3, simulation_phase)
+        
+        if star_obj:
+            star_distance_au = star_obj.distance / SCALE_FACTOR
+            star_distance_rs = star_obj.distance / (SCHWARZSCHILD_RADIUS * SCALE_FACTOR)
+            tidal_force_ratio = star_obj.tidal_strength
+            disrupted_mass_frac = star_obj.total_disrupted_mass / star_obj.mass_sim * 100
+            time_dilation = star_obj.time_dilation
+            total_debris = len(star_obj.debris_particles)
+        else:
+            star_distance_au = 0
+            star_distance_rs = 0
+            tidal_force_ratio = 0
+            disrupted_mass_frac = 100
+            time_dilation = 0
+            total_debris = 0
+        
+        disk_mass_solar = disk_obj.total_mass
+        disk_particle_count = len(disk_obj.particles)
+        
+        # Essential info only
+        info_lines = [
+            f"PHASE: {phase_names[current_phase]}",
+            f"Time: {total_simulation_time:.1f}s",
+            "",
+            "STELLAR DATA:",
+            f"Distance: {star_distance_au:.2f} AU" if star_obj else "Star: CONSUMED",
+            f"Tidal Force: {tidal_force_ratio:.1f}x" if star_obj else "Tidal Force: ∞",
+            f"Disrupted: {disrupted_mass_frac:.1f}%" if star_obj else "Disrupted: 100%",
+            f"Time Dilation: {time_dilation:.2f}" if star_obj else "Time Dilation: 0",
+            f"Debris: {total_debris}",
+            "",
+            "ACCRETION DISK:",
+            f"Mass: {disk_mass_solar:.4f} M☉",
+            f"Particles: {disk_particle_count}",
+            "",
+            "BLACK HOLE:",
+            f"Mass: {BH_MASS/M_sun/1e6:.1f}M M☉",
+            f"Rs: {SCHWARZSCHILD_RADIUS:.1e} AU",
+            "",
+            "CONTROLS:",
+            "Mouse: Rotate Camera",
+            "Scroll: Zoom",
+            "WASD: Distance",
+            "SPACE: Pause",
+            "R: Reset",
+            "ESC: Exit"
+        ]
+        
+        # Render with reduced formatting
+        panel_y = 75
+        for line in info_lines:
+            if not line.strip():
+                panel_y += 8
+                continue
+            
+            # Simplified coloring
+            if line.startswith("PHASE:"):
+                color = (255, 200, 100)
+            elif line.startswith(("STELLAR", "ACCRETION", "BLACK HOLE", "CONTROLS")):
+                color = (150, 200, 255)
+            elif ":" in line:
+                color = (200, 200, 200)
+            else:
+                color = (255, 220, 150)
+            
+            text_surface = font.render(line, True, color)
+            screen.blit(text_surface, (15, panel_y))
+            panel_y += 14
+            
+    except Exception as e:
+        # Minimal fallback
+        error_text = f"UI Error"
+        error_surface = font.render(error_text, True, (255, 100, 100))
+        screen.blit(error_surface, (20, HEIGHT - 40))
+
+def main():
+    global camera_rot, zoom, time_factor, camera_distance
+    global simulation_phase, total_simulation_time, disruption_started
+    
+    clock = pygame.time.Clock()
+    running = True
+    paused = False
+    dragging = False
+    
+    # Initialize optimized objects
+    star = RealisticStar(initial_distance=600)
+    accretion_disk = RealisticAccretionDisk()
+    
+    # Initialize background
+    init_background_stars()
+    
+    print("GARGANTUA - Optimized Realistic Stellar Tidal Disruption Simulation")
+    print(f"Black hole mass: {BH_MASS/M_sun/1e6:.1f} million solar masses")
+    print(f"Initial star: {star.mass_sim:.1f} M☉, {star.temperature:.0f} K")
+    
+    # Performance tracking
+    frame_times = []
+    
+    while running:
+        frame_start = pygame.time.get_ticks()
+        
+        dt = clock.tick(60) / 1000.0
+        dt = min(dt, 0.02)  # Cap for stability
+        
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
+                elif event.key == pygame.K_r:
+                    # Reset simulation
+                    star = RealisticStar(initial_distance=600)
+                    accretion_disk = RealisticAccretionDisk()
+                    simulation_phase = 0
+                    total_simulation_time = 0
+                    disruption_started = False
+                    # Clear caches
+                    _color_cache.clear()
+                    _ui_surfaces.clear()
+                elif event.key == pygame.K_w:
+                    camera_distance = max(300, camera_distance - 40)
+                elif event.key == pygame.K_s:
+                    camera_distance = min(1200, camera_distance + 40)
+                elif event.key == pygame.K_a:
+                    camera_rot[1] -= 0.08
+                elif event.key == pygame.K_d:
+                    camera_rot[1] += 0.08
+            
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    dragging = True
+                    pygame.mouse.get_rel()
+                elif event.button == 4:  # Scroll up
+                    zoom = min(2.5, zoom * 1.08)
+                elif event.button == 5:  # Scroll down
+                    zoom = max(0.6, zoom / 1.08)
+            
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    dragging = False
+            
+            elif event.type == pygame.MOUSEMOTION:
+                if dragging:
+                    dx, dy = pygame.mouse.get_rel()
+                    sensitivity = 0.004
+                    camera_rot[1] += dx * sensitivity
+                    camera_rot[0] += dy * sensitivity
+                    camera_rot[0] = max(-0.8, min(0.8, camera_rot[0]))
+        
+        # Update simulation
+        if not paused:
+            time_factor += dt
+            total_simulation_time += dt
+            
+            # Slow automatic rotation
+            camera_rot[1] += 0.002 * dt
+            
+            # Update star
+            if star:
+                star_survives = star.update(dt)
+                
+                # Transfer debris to disk efficiently
+                if star.is_disrupted and len(star.debris_particles) > 20:
+                    transfer_rate = min(3, len(star.debris_particles) // 10)
+                    for _ in range(transfer_rate):
+                        if star.debris_particles:
+                            debris = star.debris_particles.pop(0)
+                            pos = (debris['x'], debris['y'], debris['z'])
+                            vel = (debris['vx'], debris['vy'], debris['vz'])
+                            accretion_disk.add_stellar_debris(debris['mass'], pos, vel)
+                
+                # Check if star consumed
+                if not star_survives or star.distance <= EVENT_HORIZON_RADIUS * 1.02:
+                    if star:
+                        print(f"Star completely disrupted! Final mass disrupted: {star.total_disrupted_mass/star.mass_sim*100:.1f}%")
+                        star = None
+                        simulation_phase = 3
+            
+            # Update disk
+            accretion_disk.update(dt)
+            
+            # Update phases
+            if simulation_phase == 0 and star and star.distance < star.roche_limit * 2:
+                simulation_phase = 1
+            elif simulation_phase == 1 and disruption_started:
+                simulation_phase = 2
+        
+        # Render scene
+        screen.fill(SPACE_BLACK)
+        
+        # Draw optimized components
+        draw_optimized_background()
+        accretion_disk.draw()
+        
+        if star:
+            star.draw()
+        
+        draw_black_hole()
+        draw_optimized_ui(star, accretion_disk)
+        
+        # Performance info
+        fps = clock.get_fps()
+        fps_color = (100, 255, 100) if fps > 50 else (255, 255, 100) if fps > 35 else (255, 100, 100)
+        fps_text = small_font.render(f"FPS: {fps:.0f}", True, fps_color)
+        screen.blit(fps_text, (WIDTH - 60, 10))
+        
+        status_color = (100, 255, 100) if not paused else (255, 150, 100)
+        status_text = "RUNNING" if not paused else "PAUSED"
+        status_surface = small_font.render(status_text, True, status_color)
+        screen.blit(status_surface, (WIDTH - 60, 25))
+        
+        # Frame time tracking
+        frame_end = pygame.time.get_ticks()
+        frame_time = frame_end - frame_start
+        frame_times.append(frame_time)
+        if len(frame_times) > 60:
+            frame_times.pop(0)
+        
+        avg_frame_time = sum(frame_times) / len(frame_times)
+        if avg_frame_time > 0:
+            perf_text = small_font.render(f"{avg_frame_time:.1f}ms", True, (150, 150, 255))
+            screen.blit(perf_text, (WIDTH - 60, 40))
+        
+        pygame.display.flip()
+    
+    pygame.quit()
+    print("Gargantua simulation complete!")
+
+if __name__ == "__main__":
+    main()
